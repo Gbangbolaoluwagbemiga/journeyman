@@ -8,12 +8,12 @@ import "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 /**
  * Deploys Journeyman behind an ERC1967 proxy.
  *
- * THE ADDRESS THAT MATTERS IS THE PROXY. Everything — the frontend, the Patron
+ * THE ADDRESS THAT MATTERS IS THE PROXY. Everything — the frontend, the
  * daemon, the subgraph, the block explorer link in every job — points at the
  * proxy and never at the implementation. The implementation address changes on
  * every upgrade; the proxy address is the contract, forever.
  *
- *   forge script script/Deploy.s.sol --rpc-url arc_testnet --broadcast
+ *   forge script script/Deploy.s.sol --rpc-url arbitrum_sepolia --broadcast --verify
  *
  * To upgrade later, use Upgrade.s.sol. Do not run this script again — it would
  * deploy a second, empty escrow contract at a new address and strand every live

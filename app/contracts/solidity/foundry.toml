@@ -27,15 +27,24 @@ solc_version = "0.8.28"
 evm_version = "cancun"
 
 [rpc_endpoints]
-arbitrum_sepolia = "${ARB_SEPOLIA_RPC_URL:-https://sepolia-rollup.arbitrum.io/rpc}"
-arbitrum_one = "${ARB_RPC_URL:-https://arb1.arbitrum.io/rpc}"
+# Literal, not ${VAR}. Foundry does not expand shell-style defaults here, so a
+# "${VAR:-fallback}" is read as one long variable name and fails with the
+# fallback quoted back at you. A private endpoint is passed explicitly instead:
+#   forge script ... --rpc-url https://your-endpoint
+arbitrum_sepolia = "https://sepolia-rollup.arbitrum.io/rpc"
+arbitrum_one = "https://arb1.arbitrum.io/rpc"
 # Kept: the adapter's fork tests still point at Base, which has had a v4
 # PoolManager the longest. Read-only, so it needs no key.
-base = "${BASE_RPC_URL:-https://mainnet.base.org}"
+base = "https://mainnet.base.org"
 
+# Etherscan's V2 API is multichain: one key covers Arbiscan, so ETHERSCAN_API_KEY
+# is reused rather than issuing a second one. This is also why verification is
+# a plain `forge verify-contract` here — Arc's explorer is a self-hosted
+# Blockscout whose legacy /api rate-limits, and getting contracts verified there
+# meant posting standard-JSON to its v2 endpoint by hand.
 [etherscan]
-arbitrum_sepolia = { key = "${ARBISCAN_API_KEY}", chain = 421614 }
-arbitrum_one = { key = "${ARBISCAN_API_KEY}", chain = 42161 }
+arbitrum_sepolia = { key = "${ETHERSCAN_API_KEY}", chain = 421614 }
+arbitrum_one = { key = "${ETHERSCAN_API_KEY}", chain = 42161 }
 
 # Fork tests against a real Uniswap v4 PoolManager.
 #

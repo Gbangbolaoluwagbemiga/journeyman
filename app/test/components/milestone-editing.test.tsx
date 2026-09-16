@@ -94,7 +94,7 @@ describe("looking behind the proxy", () => {
   it("reads the implementation's code, not the proxy's", async () => {
     getBytecode.mockResolvedValue(WITH);
 
-    await new ContractService("0xA93F832ccaAb62123f82D4c92ec897A6Bdb252BE").supportsMilestoneEditing();
+    await new ContractService("0x5128B3E2a20d483f68834b26505aFD7457C282dc").supportsMilestoneEditing();
 
     expect(getStorageAt).toHaveBeenCalled();
     expect(getBytecode).toHaveBeenCalledWith({ address: IMPL });
@@ -105,7 +105,7 @@ describe("looking behind the proxy", () => {
     getStorageAt.mockResolvedValue(`0x${"0".repeat(64)}`);
     getBytecode.mockResolvedValue(WITH);
 
-    const addr = "0xA93F832ccaAb62123f82D4c92ec897A6Bdb252BE";
+    const addr = "0x5128B3E2a20d483f68834b26505aFD7457C282dc";
     expect(await new ContractService(addr).supportsMilestoneEditing()).toBe(true);
     expect(getBytecode).toHaveBeenCalledWith({ address: addr });
   });

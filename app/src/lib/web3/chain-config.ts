@@ -1,17 +1,17 @@
 const ARBITRUM_SEPOLIA_CHAIN_ID = 421614;
 
-export const ARC_NETWORKS = {
+export const NETWORKS = {
   testnet: {
     chainId: ARBITRUM_SEPOLIA_CHAIN_ID,
     name: "Arbitrum Sepolia",
     rpcUrl: "https://sepolia-rollup.arbitrum.io/rpc",
     blockExplorer: "https://sepolia.arbiscan.io",
-    nativeCurrency: { name: "USDC", symbol: "USDC", decimals: 6 },
+    nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
   },
 } as const;
 
 export function getCurrentNetwork() {
-  return ARC_NETWORKS.testnet;
+  return NETWORKS.testnet;
 }
 
 export const CONTRACTS = {
@@ -28,7 +28,7 @@ export const CONTRACTS = {
     import.meta.env.VITE_TRUSTED_FORWARDER_ADDRESS ?? ""
   ).trim() as `0x${string}` | "",
 
-  /** MockUSDC on Arc Testnet (6 decimals). Empty = use native USDC. */
+  /** USDC on Arbitrum Sepolia (6 decimals), the Circle faucet token. */
   USDC: (
     import.meta.env.VITE_USDC_TOKEN_CONTRACT ?? ""
   ).trim() as `0x${string}` | "",

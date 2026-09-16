@@ -415,8 +415,8 @@ handler offering only the permitted calls proves nothing.
 | | |
 |---|---|
 | Network | Arc EVM Testnet · chain `5042002` |
-| Proxy (**the contract**) | [`0xA93F832ccaAb62123f82D4c92ec897A6Bdb252BE`](https://testnet.arcscan.app/address/0xA93F832ccaAb62123f82D4c92ec897A6Bdb252BE) |
-| Implementation | `0x4E0c0e7919b00980D1d8A67c9F33629a78fb84C8` · `3.9.1-fee-follows-the-escrow` |
+| Proxy (**the contract**) | [`0x5128B3E2a20d483f68834b26505aFD7457C282dc`](https://sepolia.arbiscan.io/address/0x5128B3E2a20d483f68834b26505aFD7457C282dc) |
+| Implementation | `0x77123D946B89Fa1367ff3f323a5c6E5A3ADB70db` · `4.0.0-journeyman-arbitrum` |
 | Yield controller | [`0x44E5e128B084750694BB0B295713832cfe1750bB`](https://testnet.arcscan.app/address/0x44E5e128B084750694BB0B295713832cfe1750bB) |
 | Testnet venue | [`0xe6775B67963efE7e9F4B4e1621Ec08f8DAf97907`](https://testnet.arcscan.app/address/0xe6775B67963efE7e9F4B4e1621Ec08f8DAf97907) — `SponsoredVault`, which earns nothing and says so |
 | USDC | `0x3600000000000000000000000000000000000000` |

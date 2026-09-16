@@ -42,7 +42,19 @@ daemon, the React application, the Express service, and the subgraph.
 
 Recorded here as it lands, rather than claimed in advance.
 
-- _(in progress)_
+- **The Arbitrum port.** `evm_version` from shanghai to cancun, which is the
+  reason for the move: Arc EVM is not guaranteed to have TSTORE, and Uniswap
+  v4's PoolManager takes its lock with it, so the yield adapter could be
+  fork-tested there and never deployed. It compiles for deployment here.
+- **Deployed and verified on Arbitrum Sepolia.** Proxy
+  `0x5128B3E2a20d483f68834b26505aFD7457C282dc`, implementation
+  `0x77123D946B89Fa1367ff3f323a5c6E5A3ADB70db`, `4.0.0-journeyman-arbitrum`.
+- **The two-endpoint RPC split, deleted.** Arc needed one endpoint for reads and
+  another for logs because each broke differently; Arbitrum's serves both.
+- **The native-currency decimal compensation, deleted.** Arc's native currency
+  was called USDC and carried 18 decimals while its ERC-20 USDC carried 6, so
+  the code divided by 1e18 by hand. Here they are genuinely different assets.
+- **A build that works from a clean clone**, which the inherited one did not.
 
 ## Third-party dependencies
 

@@ -6,7 +6,7 @@ import { useWeb3 } from "@/contexts/web3-context";
 import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft, ArrowRight, CheckCircle2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ARC_TESTNET } from "@/lib/web3/config";
+import { ARBITRUM_SEPOLIA } from "@/lib/web3/config";
 
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { categoryMarker, type CategoryId } from "@/lib/journeyman/categories";
@@ -47,7 +47,7 @@ interface Milestone {
   amount: string;
 }
 
-const ARC_CHAIN_ID = ARC_TESTNET.chainId;
+const ARC_CHAIN_ID = ARBITRUM_SEPOLIA.chainId;
 
 export default function CreateEscrowPage() {
   const navigate = useNavigate();

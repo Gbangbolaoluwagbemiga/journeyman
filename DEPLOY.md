@@ -93,7 +93,7 @@ cd app && npm run sync-abi
 
 | | |
 |---|---|
-| Proxy (this is the contract) | `0xA93F832ccaAb62123f82D4c92ec897A6Bdb252BE` |
+| Proxy (this is the contract) | `0x5128B3E2a20d483f68834b26505aFD7457C282dc` |
 | Implementation | `0x38c42aBd2C652784AE3F2100Fa34127Ad67cAc5f` |
 | Deploy block | `60797735` |
 | USDC accepted / arbiter set | yes / yes |

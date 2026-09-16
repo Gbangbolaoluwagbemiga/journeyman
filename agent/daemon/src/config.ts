@@ -57,7 +57,7 @@ export const config = {
 
   // Journeyman — Journeyman calls this contract, does NOT deploy its own
   journeymanAddress: (process.env.JOURNEYMAN_CONTRACT_ADDRESS?.trim() ||
-    "0x6142bf4855D4F9dbC1cD8109377d4F4E2AF1ab59") as `0x${string}`,
+    "0x5128B3E2a20d483f68834b26505aFD7457C282dc") as `0x${string}`,
   usdcAddress: (process.env.USDC_ADDRESS?.trim() ||
     "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d") as `0x${string}`,
 
@@ -67,7 +67,7 @@ export const config = {
    * Arc's free tier), so scanning from genesis is not an option -- and would be
    * 60 million blocks of nothing in any case.
    */
-  journeymanDeployBlock: BigInt(process.env.JOURNEYMAN_DEPLOY_BLOCK?.trim() || "0"),
+  journeymanDeployBlock: BigInt(process.env.JOURNEYMAN_DEPLOY_BLOCK?.trim() || "309527684"),
   /** Largest block span this RPC will answer a getLogs call for. */
   logRangeLimit: BigInt(process.env.LOG_RANGE_LIMIT?.trim() || "100000"),
   graphUrl: process.env.GRAPH_URL?.trim() || "",
