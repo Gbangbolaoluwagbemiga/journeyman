@@ -17,20 +17,25 @@ optimizer_runs = 1
 # build the UUPS proxy path.
 solc_version = "0.8.28"
 
-# Pinned, not defaulted. solc 0.8.28 defaults to "cancun", which emits MCOPY and
-# TSTORE — opcodes Arc EVM is not guaranteed to have. The original 0.8.20 build
-# defaulted to "shanghai" and deploys fine on Arc, so that is the target we keep.
-# Raise this only after confirming Arc supports the newer opcodes.
-evm_version = "shanghai"
+# Cancun, which is the whole reason this project moved.
+#
+# This was pinned to "shanghai" on Arc, because Arc EVM is not guaranteed to
+# have MCOPY or TSTORE — and Uniswap v4's PoolManager takes its lock with
+# TSTORE, so the yield adapter could be fork-tested there and never deployed.
+# Arbitrum supports cancun and has a live PoolManager on both One and Sepolia,
+# so the adapter can finally run against a real pool rather than a fork.
+evm_version = "cancun"
 
 [rpc_endpoints]
-arc_testnet = "${ARC_RPC_URL}"
-# Uniswap v4 is not on Arc testnet, so the adapter's fork tests point at a chain
-# that has a real PoolManager. Base needs no key for read-only forking.
+arbitrum_sepolia = "${ARB_SEPOLIA_RPC_URL:-https://sepolia-rollup.arbitrum.io/rpc}"
+arbitrum_one = "${ARB_RPC_URL:-https://arb1.arbitrum.io/rpc}"
+# Kept: the adapter's fork tests still point at Base, which has had a v4
+# PoolManager the longest. Read-only, so it needs no key.
 base = "${BASE_RPC_URL:-https://mainnet.base.org}"
 
 [etherscan]
-arc_testnet = { key = "${ETHERSCAN_API_KEY}", url = "https://testnet.arcscan.app/api" }
+arbitrum_sepolia = { key = "${ARBISCAN_API_KEY}", chain = 421614 }
+arbitrum_one = { key = "${ARBISCAN_API_KEY}", chain = 42161 }
 
 # Fork tests against a real Uniswap v4 PoolManager.
 #
