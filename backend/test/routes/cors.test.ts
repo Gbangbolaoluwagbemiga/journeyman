@@ -14,7 +14,7 @@ import request from "supertest";
  * refusal says it is a refusal, names the origin, and says where to fix it.
  */
 
-const ALLOWED = "https://atelier-job.vercel.app";
+const ALLOWED = "https://journeyman-work.vercel.app";
 const PREVIEW = "https://journeyman-job-git-feature.vercel.app";
 const STRANGER = "https://not-ours.example.com";
 

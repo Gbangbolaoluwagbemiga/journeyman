@@ -200,7 +200,7 @@ Sign in with Google, pick a name, and a Circle MPC wallet is provisioned behind
 you. Applying costs no gas and no signature — the daemon signs on your
 instruction. Same Google account always returns the same wallet.
 
-Or skip the browser entirely: **[@The_Atelierbot](https://t.me/The_Atelierbot)**
+Or skip the browser entirely: **[@JourneymanWorkBot](https://t.me/JourneymanWorkBot)**
 is the same worker service in a chat — browse, apply, submit and withdraw, with
 jobs pushed to you rather than you checking. The two doors are namespaced
 separately, so a Telegram account and a web account are different people unless
@@ -249,7 +249,7 @@ flowchart TB
 
     subgraph surfaces["Where a freelancer meets the work"]
         web["app/ — React + Vite<br/>Browse Jobs · Post a Job · My Jobs"]
-        tg["@The_Atelierbot<br/>Telegram, no wallet needed"]
+        tg["@JourneymanWorkBot<br/>Telegram, no wallet needed"]
     end
 
     subgraph services["Off-chain services"]
@@ -425,9 +425,9 @@ handler offering only the permitted calls proves nothing.
 
 | | |
 |---|---|
-| Subgraph | [`atelier/v0.0.3`](https://api.studio.thegraph.com/query/1759977/atelier/v0.0.3) on Subgraph Studio, indexing Arc |
+| Subgraph | [`journeyman/v0.0.3`](https://api.studio.thegraph.com/query/1759977/journeyman/v0.0.3) on Subgraph Studio, indexing Arc |
 | API | `https://journeyman-production-be62.up.railway.app` — Railway |
-| Web app | [`atelier-job.vercel.app`](https://atelier-job.vercel.app) — Vercel |
+| Web app | [`journeyman-work.vercel.app`](https://journeyman-work.vercel.app) — Vercel |
 | Autopilot daemon | [`independent-presence-production-952d`](https://independent-presence-production-952d.up.railway.app/healthz) — Railway, on a persistent volume |
 
 The daemon cannot go on a serverless host: it holds SQLite on disk, polls every
@@ -586,7 +586,7 @@ is why the handling is the part that got the tests.
 
 ## Roadmap
 
-- [x] Deploy the subgraph to Subgraph Studio — live at `atelier/v0.0.3`, indexing Arc
+- [x] Deploy the subgraph to Subgraph Studio — live at `journeyman/v0.0.3`, indexing Arc
 - [x] Deploy the yield controller carrying the 60/40 split, and attach a venue
 - [ ] Size a job so the freelancer's share is reachable — see Status
 - [ ] Arc mainnet deployment, and attach the v4 adapter to a live pool there

@@ -115,7 +115,7 @@ app.use(generalLimiter);
 app.get("/", (_req, res) => {
   res.json({
     service: "Journeyman API",
-    what: "Notifications, messaging, cover letters and file uploads for atelier-job.vercel.app. The escrow itself lives on Arc, not here.",
+    what: "Notifications, messaging, cover letters and file uploads for journeyman-work.vercel.app. The escrow itself lives on Arc, not here.",
     endpoints: {
       health: "/health",
       notifications: "/v1/notifications?wallet=0x… (Bearer API_SECRET)",

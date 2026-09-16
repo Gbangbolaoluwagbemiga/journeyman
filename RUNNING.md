@@ -7,7 +7,7 @@ others are missing rather than erroring.
 |---|---|---|---|
 | **Frontend** | `5173`/`5174` | Journeyman — React + Vite | everything |
 | **Journeyman backend** | `8787` | Express — AI writers, gasless relay, uploads, messages | cover letters, file upload, chat |
-| **Agent daemon** | `8080` | Autopilot's brain — runs 24/7, holds keys, and long-polls [@The_Atelierbot](https://t.me/The_Atelierbot) | decision log, Autopilot mode, Telegram |
+| **Agent daemon** | `8080` | Autopilot's brain — runs 24/7, holds keys, and long-polls [@JourneymanWorkBot](https://t.me/JourneymanWorkBot) | decision log, Autopilot mode, Telegram |
 
 ## First time
 
@@ -114,7 +114,7 @@ switched off, which is both the point of those tests and their limit.
 
 ## The Telegram bot
 
-[@The_Atelierbot](https://t.me/The_Atelierbot) is the same worker service as
+[@JourneymanWorkBot](https://t.me/JourneymanWorkBot) is the same worker service as
 `/get-hired`, reached from a chat. The daemon long-polls it, so it is live
 whenever the daemon is running and dormant when `TELEGRAM_BOT_TOKEN` is unset —
 never half-working.

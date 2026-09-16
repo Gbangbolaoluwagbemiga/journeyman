@@ -94,7 +94,7 @@ Same reason.
 | What they asked for | Where it is |
 |---|---|
 | The Graph load-bearing | The agent asks the subgraph who applied before it can score anyone — [`AgentClient.ts:126`](../agent/daemon/src/agent/AgentClient.ts#L126). Remove it and the hire loop has no input |
-| Live data from a Graph provider | Subgraph Studio, deployed on Arc: [`atelier/v0.0.3`](https://api.studio.thegraph.com/query/1759977/atelier/v0.0.3). Not mocked, not local |
+| Live data from a Graph provider | Subgraph Studio, deployed on Arc: [`journeyman/v0.0.3`](https://api.studio.thegraph.com/query/1759977/journeyman/v0.0.3). Not mocked, not local |
 | Meaningful work with the data — reasoning, decisions, automation | The query result is the input to a hiring decision that moves USDC. The agent reads every applicant *together*, ranks them, hires one, and releases payment. The full reasoning is published per job in the decision log |
 | Open source, README, public repo | This repository |
 
@@ -195,7 +195,7 @@ Continuity-track only.
 | Architecture diagram | Done — [README](../README.md#architecture), plus the settlement sequence |
 | Public GitHub repo | Done |
 | `FEEDBACK.md` | Done |
-| Live subgraph on Subgraph Studio | Done — `atelier/v0.0.3`, indexing Arc |
+| Live subgraph on Subgraph Studio | Done — `journeyman/v0.0.3`, indexing Arc |
 | Autopilot daemon hosted | Done — Railway container, volume at `/app/data`, [`/healthz`](https://independent-presence-production-952d.up.railway.app/healthz) |
 | Uniswap Developer Feedback Form | **Outstanding** — must link to `FEEDBACK.md` |
 | Demo video, 2–4 minutes | **Outstanding** |
