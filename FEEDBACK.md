@@ -1,7 +1,7 @@
 # FEEDBACK.md — building productive escrow on the Uniswap stack
 
-Required by the Uniswap Foundation track. Written for ETHOnline 2026 by the
-team behind [Journeyman](https://github.com/Gbangbolaoluwagbemiga/Journeyman) —
+Written while building productive escrow on Uniswap v4, by the team behind
+[Journeyman](https://github.com/Gbangbolaoluwagbemiga/journeyman) —
 milestone escrow on Arc where the client can be a person or an AI agent.
 
 **What we built:** escrowed capital sits idle between a job being funded and a

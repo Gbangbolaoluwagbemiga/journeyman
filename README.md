@@ -601,7 +601,7 @@ is why the handling is the part that got the tests.
 
 ## Attribution
 
-Journeyman is a new product built for ETHOnline 2026. It is not a rebrand, it has
+Journeyman is a new product built for the Arbitrum Open House Singapore Buildathon. It is not a rebrand, it has
 no users, and it claims no traction. It builds on our own prior open-source
 escrow and agent code as boilerplate — named in full in
 [`ATTRIBUTION.md`](ATTRIBUTION.md).
@@ -617,8 +617,6 @@ escrow and agent code as boilerplate — named in full in
 | [`FEEDBACK.md`](FEEDBACK.md) | Uniswap integration feedback |
 | [`ATTRIBUTION.md`](ATTRIBUTION.md) | What this is built on |
 | [`docs/adr/0001-autopilot-delegation.md`](docs/adr/0001-autopilot-delegation.md) | Why the job-manager role exists |
-| [`docs/tracks.md`](docs/tracks.md) | **What we submit for, and the line that proves each claim** |
-| [`docs/track-verification.md`](docs/track-verification.md) | Sponsor requirements, verified (superseded on eligibility) |
 
 ## License
 
