@@ -18,7 +18,7 @@
 
 import { initiateDeveloperControlledWalletsClient } from "@circle-fin/developer-controlled-wallets";
 import { createPublicClient, http, parseUnits, formatUnits, erc20Abi } from "viem";
-import { arcTestnet, config, rpcUrl } from "../config.js";
+import { arbitrumSepolia, config, rpcUrl } from "../config.js";
 import { createCircleSigner } from "../circle/circleSigner.js";
 
 /**
@@ -98,14 +98,14 @@ export async function dripGas(to: `0x${string}`): Promise<`0x${string}` | null> 
   try {
     const signer = createCircleSigner();
     const hash = await signer.walletClient.writeContract({
-      chain: arcTestnet,
+      chain: arbitrumSepolia,
       account: signer.address,
       address: config.usdcAddress,
       abi: erc20Abi,
       functionName: "transfer",
       args: [to, parseUnits(SIGNUP_GAS_USDC, 6)],
     });
-    const pub = createPublicClient({ chain: arcTestnet, transport: http(rpcUrl) });
+    const pub = createPublicClient({ chain: arbitrumSepolia, transport: http(rpcUrl) });
     await pub.waitForTransactionReceipt({ hash });
     console.log(`[workers] dripped ${SIGNUP_GAS_USDC} USDC to ${to} (${hash})`);
     return hash;
@@ -117,7 +117,7 @@ export async function dripGas(to: `0x${string}`): Promise<`0x${string}` | null> 
 
 /** What a worker is holding right now — on Arc, this is both their gas and their earnings. */
 export async function workerBalance(address: `0x${string}`): Promise<string> {
-  const pub = createPublicClient({ chain: arcTestnet, transport: http(rpcUrl) });
+  const pub = createPublicClient({ chain: arbitrumSepolia, transport: http(rpcUrl) });
   const raw = (await pub.readContract({
     address: config.usdcAddress,
     abi: erc20Abi,
@@ -149,14 +149,14 @@ export async function withdrawTo(
   const { createSignerFor } = await import("../circle/circleSigner.js");
   const signer = createSignerFor(from);
   const hash = await signer.walletClient.writeContract({
-    chain: arcTestnet,
+    chain: arbitrumSepolia,
     account: from,
     address: config.usdcAddress,
     abi: erc20Abi,
     functionName: "transfer",
     args: [destination, parseUnits(spendable, 6)],
   });
-  const pub = createPublicClient({ chain: arcTestnet, transport: http(rpcUrl) });
+  const pub = createPublicClient({ chain: arbitrumSepolia, transport: http(rpcUrl) });
   await pub.waitForTransactionReceipt({ hash });
   return { txHash: hash, amount: spendable };
 }

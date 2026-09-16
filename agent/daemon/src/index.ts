@@ -13,7 +13,7 @@
 import http from "node:http";
 import { randomUUID } from "node:crypto";
 import { createPublicClient, http as viemHttp, formatEther, verifyMessage } from "viem";
-import { config, arcTestnet, rpcUrl } from "./config.js";
+import { config, arbitrumSepolia, rpcUrl } from "./config.js";
 import { AgentClient, type AgentEvent } from "./agent/AgentClient.js";
 import { notifyWeb } from "./notify/web.js";
 import { createJourneymanGateway } from "./circle/gateway.js";
@@ -995,7 +995,7 @@ const server = http.createServer(async (req, res) => {
        */
       let balance: string | null = null;
       try {
-        const publicClient = createPublicClient({ chain: arcTestnet, transport: viemHttp(rpcUrl) });
+        const publicClient = createPublicClient({ chain: arbitrumSepolia, transport: viemHttp(rpcUrl) });
         balance = formatEther(
           await publicClient.getBalance({ address: config.circleWalletAddress as `0x${string}` }),
         );
@@ -1063,7 +1063,7 @@ const server = http.createServer(async (req, res) => {
       const b = JSON.parse(await readBody(req)) as { txHash?: string; from?: string };
       if (!b.txHash || !b.from) return json(res, 400, { error: "txHash and from are required" });
 
-      const pub = createPublicClient({ chain: arcTestnet, transport: viemHttp(rpcUrl) });
+      const pub = createPublicClient({ chain: arbitrumSepolia, transport: viemHttp(rpcUrl) });
       const tx = await pub.getTransaction({ hash: b.txHash as `0x${string}` }).catch(() => null);
       if (!tx) return json(res, 404, { error: "That transaction could not be found on Arc yet. Give it a moment and try again." });
 
@@ -1941,7 +1941,7 @@ async function rateFreelancer(escrowId: string, brief: { milestones?: unknown[] 
 
 /** Treasury balance as a number, for measuring what a cancellation actually returned. */
 async function treasuryBalance(): Promise<number> {
-  const pub = createPublicClient({ chain: arcTestnet, transport: viemHttp(rpcUrl) });
+  const pub = createPublicClient({ chain: arbitrumSepolia, transport: viemHttp(rpcUrl) });
   const wei = await pub.getBalance({ address: config.circleWalletAddress as `0x${string}` });
   return Number(formatEther(wei));
 }

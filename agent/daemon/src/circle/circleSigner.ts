@@ -1,6 +1,6 @@
 import { createRequire } from "node:module";
 import { createWalletClient, custom, type WalletClient } from "viem";
-import { config, arcTestnet } from "../config.js";
+import { config, arbitrumSepolia } from "../config.js";
 
 // The Circle Developer-Controlled Wallets `/evm` subpath ships dual CJS/ESM builds,
 // and its ESM named exports aren't reliably resolvable across Node versions — a
@@ -109,7 +109,7 @@ export function createSignerFor(address: `0x${string}`): CircleSigner {
   });
   const walletClient = createWalletClient({
     account: address,
-    chain: arcTestnet,
+    chain: arbitrumSepolia,
     transport: custom(provider as { request: (a: { method: string; params?: unknown[] }) => Promise<unknown> }),
   });
 

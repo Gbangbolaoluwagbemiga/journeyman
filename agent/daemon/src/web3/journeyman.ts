@@ -11,7 +11,7 @@
 
 import { createPublicClient, http, zeroAddress, type Abi, type PublicClient } from "viem";
 import journeymanAbi from "./JourneymanABI.json" with { type: "json" };
-import { arcTestnet, config, logRpcUrl, rpcUrl } from "../config.js";
+import { arbitrumSepolia, config, rpcUrl } from "../config.js";
 import { createCircleSigner, type CircleSigner } from "../circle/circleSigner.js";
 
 // Cast to viem's `Abi` type (not a tighter `as const` literal, since this is loaded
@@ -40,32 +40,27 @@ const erc20Abi = [
 let publicClient: PublicClient | null = null;
 export function getPublicClient(): PublicClient {
   if (!publicClient) {
-    publicClient = createPublicClient({ chain: arcTestnet, transport: http(rpcUrl) });
+    publicClient = createPublicClient({ chain: arbitrumSepolia, transport: http(rpcUrl) });
   }
   return publicClient;
 }
 
-let logClient: PublicClient | null = null;
 /**
- * The client for `eth_getLogs`, which is a different endpoint on purpose.
+ * Logs come from the same client as reads, now.
  *
- * See the note in config.ts: drpc answers reads all day and caps a log range at
- * somewhere under 200 blocks; rpc.testnet.arc.network is the only one that will
- * walk a real range and it rate-limits a bare eth_call. Pointing everything at
- * the second one to get logs is what put a freelancer's balance behind the
- * busiest queue on the network.
+ * On Arc these were deliberately two endpoints: one answered reads all day and
+ * capped a log range under 200 blocks while claiming the limit was 10,000, the
+ * other walked real ranges and rate-limited a bare eth_call. Pointing
+ * everything at the second to get logs is what once put a freelancer's balance
+ * behind the busiest queue on the network.
  *
- * Reads are constant and logs are occasional, so they are separated by how
- * often they happen rather than by what they return.
+ * Arbitrum's RPC serves both, so the second client is gone. The function stays
+ * as an alias because the call sites that use it are saying "this is a log
+ * walk", and that is worth keeping legible for whenever a chain forces the
+ * split again.
  */
 export function getLogClient(): PublicClient {
-  if (!logClient) {
-    logClient =
-      logRpcUrl === rpcUrl
-        ? getPublicClient()
-        : createPublicClient({ chain: arcTestnet, transport: http(logRpcUrl) });
-  }
-  return logClient;
+  return getPublicClient();
 }
 
 export interface CreateEscrowParams {
@@ -133,7 +128,7 @@ export async function setYieldOptIn(
   }
 
   const hash = await signer.walletClient.writeContract({
-    chain: arcTestnet,
+    chain: arbitrumSepolia,
     account: signer.address,
     address: controller,
     abi: [
@@ -170,7 +165,7 @@ export async function setJobManager(
   signer: CircleSigner,
 ): Promise<`0x${string}`> {
   const hash = await signer.walletClient.writeContract({
-    chain: arcTestnet,
+    chain: arbitrumSepolia,
     account: signer.address,
     address: config.journeymanAddress,
     abi,
@@ -222,7 +217,7 @@ export async function createEscrow(
   // 6-decimal units) via safeTransferFrom — required before createEscrow will accept
   // a non-native token; sending it as msg.value instead reverts with InvalidAmount.
   const approveHash = await signer.walletClient.writeContract({
-    chain: arcTestnet,
+    chain: arbitrumSepolia,
     account: signer.address,
     address: config.usdcAddress,
     abi: erc20Abi,
@@ -232,7 +227,7 @@ export async function createEscrow(
   await client.waitForTransactionReceipt({ hash: approveHash });
 
   const hash = await signer.walletClient.writeContract({
-    chain: arcTestnet,
+    chain: arbitrumSepolia,
     account: signer.address,
     address: config.journeymanAddress,
     abi,
@@ -283,7 +278,7 @@ async function write(
   as: CircleSigner = createCircleSigner(),
 ): Promise<`0x${string}`> {
   const hash = await as.walletClient.writeContract({
-    chain: arcTestnet,
+    chain: arbitrumSepolia,
     account: as.address,
     address: config.journeymanAddress,
     abi,

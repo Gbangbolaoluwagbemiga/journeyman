@@ -10,7 +10,7 @@
 import "dotenv/config";
 import { createPublicClient, createWalletClient, http, parseEther, type Abi } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
-import { arcTestnet, config, rpcUrl } from "../src/config.js";
+import { arbitrumSepolia, config, rpcUrl } from "../src/config.js";
 import journeymanAbi from "../src/web3/JourneymanABI.json" with { type: "json" };
 
 const abi = journeymanAbi as Abi;
@@ -20,7 +20,7 @@ const abi = journeymanAbi as Abi;
 const PORT = process.argv[2] ?? String(config.port);
 const BASE = process.env.AGENT_URL?.trim().replace(/\/$/, "") || `http://localhost:${PORT}`;
 
-const publicClient = createPublicClient({ chain: arcTestnet, transport: http(rpcUrl) });
+const publicClient = createPublicClient({ chain: arbitrumSepolia, transport: http(rpcUrl) });
 
 function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
@@ -48,7 +48,7 @@ async function main() {
   const clientKey = (process.env.E2E_CLIENT_KEY?.trim() || process.env.FREELANCER_1_KEY?.trim()) as `0x${string}`;
   if (!clientKey) throw new Error("Set E2E_CLIENT_KEY (or FREELANCER_1_KEY) to a funded Arc account.");
   const clientAccount = privateKeyToAccount(clientKey);
-  const clientWallet = createWalletClient({ account: clientAccount, chain: arcTestnet, transport: http(rpcUrl) });
+  const clientWallet = createWalletClient({ account: clientAccount, chain: arbitrumSepolia, transport: http(rpcUrl) });
 
   const budget = process.env.E2E_BUDGET?.trim() || "80";
 
@@ -57,7 +57,7 @@ async function main() {
     // A little over budget so the platform fee is covered too.
     const topUp = parseEther((Number(budget) * 1.1).toFixed(6));
     const depositHash = await clientWallet.sendTransaction({
-      chain: arcTestnet,
+      chain: arbitrumSepolia,
       account: clientAccount,
       to: config.circleWalletAddress as `0x${string}`,
       value: topUp,
@@ -130,9 +130,9 @@ async function main() {
   ];
   for (const a of applicants) {
     const account = privateKeyToAccount(a.key);
-    const walletClient = createWalletClient({ account, chain: arcTestnet, transport: http(rpcUrl) });
+    const walletClient = createWalletClient({ account, chain: arbitrumSepolia, transport: http(rpcUrl) });
     const hash = await walletClient.writeContract({
-      chain: arcTestnet,
+      chain: arbitrumSepolia,
       account,
       address: config.journeymanAddress,
       abi,
@@ -164,9 +164,9 @@ async function main() {
   // submitMilestone will accept anything, and only the beneficiary can call it (not
   // Journeyman, not the depositor). Real freelancers do this through Journeyman's own UI.
   console.log("4. Starting work + submitting milestone 0 as the hired freelancer...");
-  const walletClient = createWalletClient({ account: freelancerAccount, chain: arcTestnet, transport: http(rpcUrl) });
+  const walletClient = createWalletClient({ account: freelancerAccount, chain: arbitrumSepolia, transport: http(rpcUrl) });
   const startHash = await walletClient.writeContract({
-    chain: arcTestnet,
+    chain: arbitrumSepolia,
     account: freelancerAccount,
     address: config.journeymanAddress,
     abi,
@@ -175,7 +175,7 @@ async function main() {
   });
   await publicClient.waitForTransactionReceipt({ hash: startHash });
   const submitHash = await walletClient.writeContract({
-    chain: arcTestnet,
+    chain: arbitrumSepolia,
     account: freelancerAccount,
     address: config.journeymanAddress,
     abi,

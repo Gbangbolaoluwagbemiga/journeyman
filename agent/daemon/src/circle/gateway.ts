@@ -108,10 +108,10 @@ const X402_TIMEOUT_MS = 20_000;
 export function createJourneymanGateway(): JourneymanGateway {
   const signer = createCircleSigner();
   const scheme = new BatchEvmScheme(signer);
-  const chainConfig = CHAIN_CONFIGS.arcTestnet;
+  const chainConfig = CHAIN_CONFIGS.arbitrumSepolia;
   const address = signer.address;
 
-  const reader = new GatewayClient({ chain: "arcTestnet", privateKey: generatePrivateKey(), rpcUrl });
+  const reader = new GatewayClient({ chain: "arbitrumSepolia", privateKey: generatePrivateKey(), rpcUrl });
 
   async function pay<T = unknown>(
     url: string,

@@ -1,49 +1,31 @@
 import "dotenv/config";
 import { defineChain } from "viem";
 
-/** Arc Testnet — Circle's stablecoin-native L1. USDC is the native currency (6 decimals). */
 /**
- * TWO ENDPOINTS, BECAUSE NEITHER DOES BOTH.
+ * ONE ENDPOINT, BECAUSE ARBITRUM'S DOES BOTH.
  *
- * Measured, not guessed, and the numbers are the whole argument:
+ * Arc needed two. Its drpc endpoint answered plain reads all day and capped
+ * eth_getLogs somewhere under 200 blocks while claiming the limit was 10,000;
+ * its public endpoint was the only one that would walk a real log range and it
+ * rate-limited a bare eth_call. Reads and logs had to be split across the two,
+ * and the split is deleted here because Arbitrum's public RPC serves both.
  *
- *   drpc                      plain reads fine, 8/8 under load, multicall fine
- *                             getLogs capped somewhere between 100 and 200
- *                             blocks — its refusal claims "over 10000 blocks",
- *                             which is simply untrue, so the message is no
- *                             guide at all
- *
- *   rpc.testnet.arc.network   the only one that will answer a wide getLogs
- *                             at all, and it rate-limits a bare eth_call
- *                             under ordinary use
- *
- * The daemon pointed everything at the second one, because logs are the thing
- * that has no alternative — and so every balance read, every escrow lookup and
- * every milestone fetch queued behind the endpoint that is always busy. A
- * freelancer's dashboard showed a dash where their money should be, and their
- * board could not list a job they had finished, while the browser sitting next
- * to it read the same chain through drpc without trouble.
- *
- * So: reads go to the endpoint that answers reads, logs go to the one that
- * answers logs. Logs are asked for rarely — the delegation sweep keeps a cursor
- * and only walks forward — which is exactly the access pattern the busy
- * endpoint can still serve.
+ * If that ever stops being true, the fix is a paid endpoint in ARB_RPC_URL —
+ * not a second client.
  */
-export const rpcUrl = process.env.ARC_RPC_URL?.trim() || "https://rpc.drpc.testnet.arc.network";
+export const rpcUrl =
+  process.env.ARB_RPC_URL?.trim() || "https://sepolia-rollup.arbitrum.io/rpc";
 
-/** Where `eth_getLogs` goes. Falls back to the read URL when unset. */
-export const logRpcUrl =
-  process.env.ARC_LOG_RPC_URL?.trim() || "https://rpc.testnet.arc.network";
-
-export const arcTestnet = defineChain({
-  id: Number(process.env.ARC_CHAIN_ID ?? 5042002),
-  name: "Arc Testnet",
-  nativeCurrency: { name: "USDC", symbol: "USDC", decimals: 6 },
+export const arbitrumSepolia = defineChain({
+  id: Number(process.env.CHAIN_ID ?? 421614),
+  name: "Arbitrum Sepolia",
+  nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
   rpcUrls: { default: { http: [rpcUrl] } },
-  blockExplorers: { default: { name: "Arcscan", url: "https://testnet.arcscan.app" } },
-  /* Declared so viem will actually use it — see the note in the app's copy of
-     this chain. Without this line every batched read falls back to a loop, and
-     the loop is what gets rate-limited. */
+  blockExplorers: { default: { name: "Arbiscan", url: "https://sepolia.arbiscan.io" } },
+  /* Declared so viem will actually use it. Arbitrum has multicall3 at the
+     canonical address like everywhere else; the reason this line exists is that
+     viem refuses a contract the chain has not declared, and without it every
+     batched read silently becomes a loop. */
   contracts: { multicall3: { address: "0xcA11bde05977b3631167028862bE2a173976CA11" } },
   testnet: true,
 });
@@ -77,7 +59,7 @@ export const config = {
   journeymanAddress: (process.env.JOURNEYMAN_CONTRACT_ADDRESS?.trim() ||
     "0x6142bf4855D4F9dbC1cD8109377d4F4E2AF1ab59") as `0x${string}`,
   usdcAddress: (process.env.USDC_ADDRESS?.trim() ||
-    "0x3600000000000000000000000000000000000000") as `0x${string}`,
+    "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d") as `0x${string}`,
 
   /**
    * Block the live proxy was deployed at. The token whitelist has to be
@@ -85,9 +67,9 @@ export const config = {
    * Arc's free tier), so scanning from genesis is not an option -- and would be
    * 60 million blocks of nothing in any case.
    */
-  journeymanDeployBlock: BigInt(process.env.JOURNEYMAN_DEPLOY_BLOCK?.trim() || "60797735"),
+  journeymanDeployBlock: BigInt(process.env.JOURNEYMAN_DEPLOY_BLOCK?.trim() || "0"),
   /** Largest block span this RPC will answer a getLogs call for. */
-  logRangeLimit: BigInt(process.env.LOG_RANGE_LIMIT?.trim() || "9000"),
+  logRangeLimit: BigInt(process.env.LOG_RANGE_LIMIT?.trim() || "100000"),
   graphUrl: process.env.GRAPH_URL?.trim() || "",
 
   /**
@@ -106,7 +88,7 @@ export const config = {
   circleEntitySecret: process.env.CIRCLE_ENTITY_SECRET?.trim() || "",
   circleWalletId: process.env.CIRCLE_WALLET_ID?.trim() || "",
   circleWalletAddress: (process.env.CIRCLE_WALLET_ADDRESS?.trim() || "") as `0x${string}` | "",
-  circleBlockchain: process.env.CIRCLE_BLOCKCHAIN?.trim() || "ARC-TESTNET",
+  circleBlockchain: process.env.CIRCLE_BLOCKCHAIN?.trim() || "ARB-SEPOLIA",
 
   // Circle Gateway (x402 nanopayments)
   gatewayFacilitatorUrl:

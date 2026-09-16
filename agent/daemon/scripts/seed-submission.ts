@@ -6,7 +6,7 @@
 import "dotenv/config";
 import { createPublicClient, createWalletClient, http, type Abi } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { arcTestnet, config, rpcUrl } from "../src/config.js";
+import { arbitrumSepolia, config, rpcUrl } from "../src/config.js";
 import journeymanAbi from "../src/web3/JourneymanABI.json" with { type: "json" };
 
 const abi = journeymanAbi as Abi;
@@ -32,8 +32,8 @@ async function main() {
   }
 
   const account = privateKeyToAccount(key);
-  const publicClient = createPublicClient({ chain: arcTestnet, transport: http(rpcUrl) });
-  const walletClient = createWalletClient({ account, chain: arcTestnet, transport: http(rpcUrl) });
+  const publicClient = createPublicClient({ chain: arbitrumSepolia, transport: http(rpcUrl) });
+  const walletClient = createWalletClient({ account, chain: arbitrumSepolia, transport: http(rpcUrl) });
 
   console.log(`Submitting milestone ${milestoneIndex} for escrow #${escrowId} as ${account.address}...`);
 
@@ -46,7 +46,7 @@ async function main() {
   // which is the normal case for every milestone after the first.
   try {
     const startHash = await walletClient.writeContract({
-      chain: arcTestnet,
+      chain: arbitrumSepolia,
       account,
       address: config.journeymanAddress,
       abi,
@@ -60,7 +60,7 @@ async function main() {
   }
 
   const hash = await walletClient.writeContract({
-    chain: arcTestnet,
+    chain: arbitrumSepolia,
     account,
     address: config.journeymanAddress,
     abi,
