@@ -9,14 +9,13 @@ build/
 coverage/
 .vite/
 
-# OpenZeppelin is declared as a submodule in secureflow/.gitmodules, not
-# vendored. Committing ~2,000 upstream files during the event would bury the
-# work that is actually being judged. Setup:
-#   git clone --depth 1 --branch v5.1.0 \
-#     https://github.com/OpenZeppelin/openzeppelin-contracts \
-#     app/contracts/solidity/lib/openzeppelin-contracts
-app/contracts/solidity/lib/openzeppelin-contracts/
-app/contracts/solidity/lib/openzeppelin-contracts-upgradeable/
+# Foundry dependencies are git submodules. They are TRACKED as gitlinks and
+# restored by `git clone --recursive`, or `forge install` in an existing clone.
+#
+# They were .gitignored in the project this is built from, which meant a fresh
+# clone could not compile the contracts at all — the first thing any reader
+# tries. Two thousand upstream files still stay out of the diff; the difference
+# is that the commit records which version, so the build is reproducible.
 
 # Playwright
 test-results/
