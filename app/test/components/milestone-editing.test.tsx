@@ -31,7 +31,7 @@ vi.mock("viem", async (importOriginal) => {
     }),
   };
 });
-vi.mock("@/providers/WalletProvider", () => ({ arcTestnet: { id: 5042002 } }));
+vi.mock("@/providers/WalletProvider", () => ({ arbitrumSepolia: { id: 421614 } }));
 
 const { ContractService, SET_MILESTONES_SELECTOR } = await import("@/lib/web3/contract-service");
 

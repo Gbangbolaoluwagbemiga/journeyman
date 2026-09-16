@@ -7,33 +7,28 @@ import { defineChain } from "viem";
 import type { AppKitNetwork } from "@reown/appkit/networks";
 
 // ─── Arc Testnet — defined as a viem Chain ────────────────────────────────────
-export const arcTestnet = defineChain({
-  id: 5042002,
-  name: "Arc Testnet",
-  nativeCurrency: { name: "USDC", symbol: "USDC", decimals: 6 },
+export const arbitrumSepolia = defineChain({
+  id: 421614,
+  name: "Arbitrum Sepolia",
+  nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
   rpcUrls: {
-    default: { http: ["https://rpc.drpc.testnet.arc.network"] },
+    default: { http: ["https://sepolia-rollup.arbitrum.io/rpc"] },
   },
   blockExplorers: {
-    default: { name: "ArcScan", url: "https://testnet.arcscan.app" },
+    default: { name: "Arbiscan", url: "https://sepolia.arbiscan.io" },
   },
   /*
-   * MULTICALL3, WHICH WAS ALWAYS THERE.
+   * MULTICALL3, DECLARED ON PURPOSE.
    *
-   * Arc has multicall3 at the canonical address, and this chain never said so.
-   * viem will not use a contract a chain has not declared, so every
-   * `client.multicall(...)` in this app threw ChainDoesNotSupportContract and
-   * fell into its fallback — which in every case was the sequential loop the
-   * batch existed to replace. Escrows, milestones, the analytics page and the
-   * autopilot badge were all doing one request per item while the code around
-   * them explained why they didn't.
+   * viem will not use a contract the chain has not declared, and the failure is
+   * silent: `client.multicall(...)` throws ChainDoesNotSupportContract and every
+   * call site falls into its fallback, which in this app is the sequential loop
+   * the batch existed to replace. On Arc that went unnoticed for weeks —
+   * escrows, milestones, the analytics page and the autopilot badge all doing
+   * one request per item while the comments around them explained why they
+   * didn't. Nothing looked broken, because the fallbacks worked.
    *
-   * Nothing was visibly broken, which is why it survived: the fallbacks worked.
-   * They just spent N requests where one would do, against a public RPC that
-   * answers `rate limit exceeded` under exactly that kind of load — and a
-   * rate-limited read is where this app's worst bugs start.
-   *
-   * Verified deployed on Arc testnet (7618 bytes of code) before declaring it.
+   * Confirmed deployed on both Arbitrum One and Sepolia before declaring it.
    */
   contracts: {
     multicall3: { address: "0xcA11bde05977b3631167028862bE2a173976CA11" },
@@ -42,14 +37,14 @@ export const arcTestnet = defineChain({
 });
 
 // Cast to Reown's AppKitNetwork so it works with createAppKit and WagmiAdapter
-const arcTestnetReown = arcTestnet as unknown as AppKitNetwork;
+const arbitrumSepoliaReown = arbitrumSepolia as unknown as AppKitNetwork;
 
 const projectId = (import.meta.env.VITE_REOWN_PROJECT_ID as string | undefined) ?? "";
 
 // ─── Wagmi adapter (Reown manages connectors: MetaMask, WC QR, Coinbase, etc.)
 export const wagmiAdapter = new WagmiAdapter({
   projectId,
-  networks: [arcTestnetReown],
+  networks: [arbitrumSepoliaReown],
 });
 
 export const wagmiConfig = wagmiAdapter.wagmiConfig;
@@ -58,8 +53,8 @@ export const wagmiConfig = wagmiAdapter.wagmiConfig;
 createAppKit({
   adapters: [wagmiAdapter],
   projectId,
-  networks: [arcTestnetReown],
-  defaultNetwork: arcTestnetReown,
+  networks: [arbitrumSepoliaReown],
+  defaultNetwork: arbitrumSepoliaReown,
   metadata: {
     name: "Journeyman",
     description: "Milestone-based freelancer escrow on Arc EVM",

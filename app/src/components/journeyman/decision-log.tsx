@@ -24,8 +24,8 @@ import { ExternalLink } from "lucide-react";
 import { actorClass, ACTOR_LABEL, type Decision } from "@/lib/journeyman/actor";
 
 const EXPLORER = (
-  (import.meta.env.VITE_ARC_EXPLORER_URL as string | undefined) ??
-  "https://testnet.arcscan.app"
+  (import.meta.env.VITE_EXPLORER_URL as string | undefined) ??
+  "https://sepolia.arbiscan.io"
 )
   .trim()
   .replace(/\/$/, "");

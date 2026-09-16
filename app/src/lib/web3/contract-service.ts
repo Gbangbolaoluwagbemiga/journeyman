@@ -6,7 +6,7 @@ import {
   parseAbiItem,
   type Address,
 } from "viem";
-import { arcTestnet } from "@/providers/WalletProvider";
+import { arbitrumSepolia } from "@/providers/WalletProvider";
 import { CONTRACTS } from "./config";
 import JourneymanABI from "./JourneymanABI.json";
 
@@ -58,7 +58,7 @@ export class ContractService {
   constructor(contractAddress: string = CONTRACTS.JOURNEYMAN_ESCROW) {
     this.addr = contractAddress as Address;
     this.client = createPublicClient({
-      chain: arcTestnet,
+      chain: arbitrumSepolia,
       transport: http(),
     });
     this.contract = getContract({
@@ -1186,10 +1186,10 @@ export class ContractService {
 
       if (!isNative) {
         const { createPublicClient, http } = await import("viem");
-        const { arcTestnet } = await import("@/providers/WalletProvider");
+        const { arbitrumSepolia } = await import("@/providers/WalletProvider");
         const { erc20Abi } = await import("@/lib/web3/abis");
 
-        const publicClient = createPublicClient({ chain: arcTestnet, transport: http() });
+        const publicClient = createPublicClient({ chain: arbitrumSepolia, transport: http() });
         const allowance = (await publicClient.readContract({
           address: token,
           abi: erc20Abi,
@@ -1240,10 +1240,10 @@ export class ContractService {
     // For ERC-20 tokens: approve spending first
     if (!isNativeToken) {
       const { createPublicClient, http } = await import("viem");
-      const { arcTestnet } = await import("@/providers/WalletProvider");
+      const { arbitrumSepolia } = await import("@/providers/WalletProvider");
       const { erc20Abi } = await import("@/lib/web3/abis");
 
-      const publicClient = createPublicClient({ chain: arcTestnet, transport: http() });
+      const publicClient = createPublicClient({ chain: arbitrumSepolia, transport: http() });
       const allowance = await publicClient.readContract({
         address: token,
         abi: erc20Abi,

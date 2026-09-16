@@ -1,11 +1,11 @@
-const ARC_TESTNET_CHAIN_ID = 5042002;
+const ARBITRUM_SEPOLIA_CHAIN_ID = 421614;
 
 export const ARC_NETWORKS = {
   testnet: {
-    chainId: ARC_TESTNET_CHAIN_ID,
-    name: "Arc Testnet",
-    rpcUrl: "https://rpc.drpc.testnet.arc.network",
-    blockExplorer: "https://testnet.arcscan.app",
+    chainId: ARBITRUM_SEPOLIA_CHAIN_ID,
+    name: "Arbitrum Sepolia",
+    rpcUrl: "https://sepolia-rollup.arbitrum.io/rpc",
+    blockExplorer: "https://sepolia.arbiscan.io",
     nativeCurrency: { name: "USDC", symbol: "USDC", decimals: 6 },
   },
 } as const;

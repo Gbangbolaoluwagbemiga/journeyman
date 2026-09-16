@@ -5,7 +5,7 @@
  * look like this:
  *
  *   User rejected the request. Request Arguments: chain: Arc EVM Testnet (id:
- *   5042002) from: 0x3Be7… to: 0x370e… data: 0x0735ab8600000000000000000000…
+ *   421614) from: 0x3Be7… to: 0x370e… data: 0x0735ab8600000000000000000000…
  *   Contract Call: address: 0x370e… Version: viem@2.49.0
  *
  * Every word of that is true and none of it is useful to the person who just

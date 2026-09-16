@@ -130,8 +130,8 @@ export function useCreateEscrow() {
         
         // Read current allowance
         const { createPublicClient, http } = await import("viem");
-        const { arcTestnet } = await import("@/providers/WalletProvider");
-        const publicClient = createPublicClient({ chain: arcTestnet, transport: http() });
+        const { arbitrumSepolia } = await import("@/providers/WalletProvider");
+        const publicClient = createPublicClient({ chain: arbitrumSepolia, transport: http() });
         
         try {
           const allowance = await publicClient.readContract({
@@ -216,8 +216,8 @@ export function useCreateEscrow() {
 
       // Wait for transaction to be mined and get the receipt
       const { createPublicClient, http, decodeEventLog } = await import("viem");
-      const { arcTestnet } = await import("@/providers/WalletProvider");
-      const publicClient = createPublicClient({ chain: arcTestnet, transport: http() });
+      const { arbitrumSepolia } = await import("@/providers/WalletProvider");
+      const publicClient = createPublicClient({ chain: arbitrumSepolia, transport: http() });
       
       toast({ title: "Transaction submitted", description: "Waiting for confirmation..." });
       

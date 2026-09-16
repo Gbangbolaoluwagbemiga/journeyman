@@ -76,7 +76,7 @@ export function Web3Provider({ children }: { children: ReactNode }) {
         connectWallet,
         disconnectWallet,
         getContract,
-        network: { rpcUrl: "https://rpc.drpc.testnet.arc.network" },
+        network: { rpcUrl: "https://sepolia-rollup.arbitrum.io/rpc" },
         refreshBalance,
         isOwner,
       }}

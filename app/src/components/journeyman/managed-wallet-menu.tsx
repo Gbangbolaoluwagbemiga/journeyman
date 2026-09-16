@@ -27,8 +27,8 @@ import { useWeb3 } from "@/contexts/web3-context";
 import { toastError } from "@/lib/journeyman/errors";
 
 const EXPLORER = (
-  (import.meta.env.VITE_ARC_EXPLORER_URL as string | undefined) ??
-  "https://testnet.arcscan.app"
+  (import.meta.env.VITE_EXPLORER_URL as string | undefined) ??
+  "https://sepolia.arbiscan.io"
 )
   .trim()
   .replace(/\/$/, "");

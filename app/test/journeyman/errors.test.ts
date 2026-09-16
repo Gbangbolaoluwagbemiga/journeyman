@@ -6,7 +6,7 @@ import { humanizeError } from "@/lib/journeyman/errors";
  * Every word true, none of it useful, and the one sentence that mattered was
  * buried in front of a wall the eye slides off.
  */
-const VIEM_REJECTION = `User rejected the request. Request Arguments: chain: Arc EVM Testnet (id: 5042002) from: 0x3Be7fbBDbC73Fc4731D60EF09c4BA1A94DC58E41 to: 0x370e1517Fe56fF3ebCFc3D7ed08563fB88910C11 data: 0x0735ab8600000000000000000000000000000000000000000000000000000000 Contract Call: address: 0x370e1517Fe56fF3ebCFc3D7ed08563fB88910C11 Version: viem@2.49.0`;
+const VIEM_REJECTION = `User rejected the request. Request Arguments: chain: Arc EVM Testnet (id: 421614) from: 0x3Be7fbBDbC73Fc4731D60EF09c4BA1A94DC58E41 to: 0x370e1517Fe56fF3ebCFc3D7ed08563fB88910C11 data: 0x0735ab8600000000000000000000000000000000000000000000000000000000 Contract Call: address: 0x370e1517Fe56fF3ebCFc3D7ed08563fB88910C11 Version: viem@2.49.0`;
 
 describe("wallet failures", () => {
   it("says you cancelled it, and nothing else", () => {
