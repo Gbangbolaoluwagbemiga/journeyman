@@ -50,7 +50,7 @@ export class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, info: ErrorInfo) {
     // Always, in every build: this is the one place the component stack exists.
-    console.error("[Atelier] render crash:", error, info.componentStack);
+    console.error("[Journeyman] render crash:", error, info.componentStack);
   }
 
   componentDidUpdate(prev: Props) {

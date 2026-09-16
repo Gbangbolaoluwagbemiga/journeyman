@@ -23,7 +23,7 @@ const groqStructured = vi.fn();
 const getAverageRating = vi.fn();
 
 vi.mock("../src/groq/structured.js", () => ({ groqStructured }));
-vi.mock("../src/web3/atelier.js", () => ({ getAverageRating }));
+vi.mock("../src/web3/journeyman.js", () => ({ getAverageRating }));
 vi.mock("../src/agent/ApplicantEvidence.js", () => ({
   gatherEvidence: vi.fn(async () => ({ portfolio: null, history: null })),
   renderEvidence: vi.fn(() => ({ shown: "No link given.", record: "No history." })),

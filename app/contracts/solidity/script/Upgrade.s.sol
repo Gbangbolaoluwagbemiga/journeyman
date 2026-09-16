@@ -2,7 +2,7 @@
 pragma solidity ^0.8.20;
 
 import "forge-std/Script.sol";
-import "../src/Atelier.sol";
+import "../src/Journeyman.sol";
 
 /**
  * Ships a new implementation to an existing proxy.
@@ -12,11 +12,11 @@ import "../src/Atelier.sol";
  *
  * BEFORE RUNNING THIS:
  *
- *   1. `forge test --match-path test/AtelierUpgrade.t.sol` must pass. Those
+ *   1. `forge test --match-path test/JourneymanUpgrade.t.sol` must pass. Those
  *      tests upgrade a proxy holding a live, mid-flight escrow and assert that
  *      every field survives — which is the failure this script can cause and
  *      cannot undo.
- *   2. Confirm the storage rules at the top of Atelier.sol were followed:
+ *   2. Confirm the storage rules at the top of Journeyman.sol were followed:
  *      new variables appended above __gap, gap length reduced to match, nothing
  *      reordered or retyped.
  *   3. Bump version() so the deployed build is identifiable from chain state.
@@ -29,13 +29,13 @@ contract UpgradeScript is Script {
         uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
         address proxyAddress = vm.envAddress("PROXY_ADDRESS");
 
-        Atelier proxy = Atelier(payable(proxyAddress));
+        Journeyman proxy = Journeyman(payable(proxyAddress));
         string memory before = proxy.version();
         uint256 escrowsBefore = proxy.nextEscrowId();
 
         vm.startBroadcast(deployerPrivateKey);
 
-        Atelier newImplementation = new Atelier();
+        Journeyman newImplementation = new Journeyman();
         proxy.upgradeToAndCall(address(newImplementation), "");
 
         vm.stopBroadcast();

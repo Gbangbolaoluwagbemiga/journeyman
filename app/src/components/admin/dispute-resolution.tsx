@@ -86,7 +86,7 @@ export function DisputeResolution({ onDisputeResolved }: DisputeResolutionProps)
     if (showLoading) setLoading(true);
     try {
       const { ContractService } = await import("@/lib/web3/contract-service");
-      const svc = new ContractService(CONTRACTS.ATELIER_ESCROW);
+      const svc = new ContractService(CONTRACTS.JOURNEYMAN_ESCROW);
       const nextId = await svc.getNextEscrowId();
       const found: Dispute[] = [];
 
@@ -163,7 +163,7 @@ export function DisputeResolution({ onDisputeResolved }: DisputeResolutionProps)
     setIsResolving(true);
     try {
       const { ContractService } = await import("@/lib/web3/contract-service");
-      const svc = new ContractService(CONTRACTS.ATELIER_ESCROW);
+      const svc = new ContractService(CONTRACTS.JOURNEYMAN_ESCROW);
       const total = selectedDispute.milestoneAmountWei;
       const freelancerAmount = (total * BigInt(freelancerPct)) / 100n;
       const clientAmount = total - freelancerAmount;

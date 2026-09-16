@@ -45,7 +45,7 @@ describe("when a page throws", () => {
   it("still logs to the console, which is where a deployed build is debugged", () => {
     render(<ErrorBoundary><Boom /></ErrorBoundary>);
     expect(consoleError).toHaveBeenCalledWith(
-      "[Atelier] render crash:",
+      "[Journeyman] render crash:",
       expect.any(Error),
       expect.anything(),
     );

@@ -1,4 +1,4 @@
-// Reads from the Atelier subgraph, or from the chain when the subgraph can't answer.
+// Reads from the Journeyman subgraph, or from the chain when the subgraph can't answer.
 import { config } from "../config.js";
 import { applicationsFromChain, escrowFromChain } from "./chain-fallback.js";
 

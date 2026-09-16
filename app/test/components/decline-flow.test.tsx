@@ -37,8 +37,8 @@ vi.mock("@/lib/web3/contract-service", () => ({
   },
 }));
 
-const { DeclineAssignment } = await import("@/components/atelier/decline-assignment");
-const { DeclinedChoice } = await import("@/components/atelier/declined-choice");
+const { DeclineAssignment } = await import("@/components/journeyman/decline-assignment");
+const { DeclinedChoice } = await import("@/components/journeyman/declined-choice");
 
 const ZERO = "0x0000000000000000000000000000000000000000";
 const WORKER = "0xfC3642978a1a46ff751ee259906E07ddD7d43Bd1";

@@ -18,12 +18,12 @@
 // the applicant addresses and puts the letter in the event -- so those come
 // from logs, walked in windows because public RPCs cap a getLogs range.
 import { getAddress, type Abi } from "viem";
-import atelierAbi from "../web3/AtelierABI.json" with { type: "json" };
+import journeymanAbi from "../web3/JourneymanABI.json" with { type: "json" };
 import { config } from "../config.js";
-import { getLogClient, getPublicClient } from "../web3/atelier.js";
+import { getLogClient, getPublicClient } from "../web3/journeyman.js";
 import type { GQLApplication, GQLEscrow, GQLMilestone } from "./queries.js";
 
-const abi = atelierAbi as Abi;
+const abi = journeymanAbi as Abi;
 
 interface RawEscrow {
   depositor: string;
@@ -71,10 +71,10 @@ async function applicationDetails(
   const out = new Map<string, { coverLetter: string; proposedTimeline: string; timestamp: string }>();
   const latest = await client.getBlockNumber();
 
-  for (let from = config.atelierDeployBlock; from <= latest; from += config.logRangeLimit + 1n) {
+  for (let from = config.journeymanDeployBlock; from <= latest; from += config.logRangeLimit + 1n) {
     const to = from + config.logRangeLimit > latest ? latest : from + config.logRangeLimit;
     const logs = await client.getLogs({
-      address: config.atelierAddress,
+      address: config.journeymanAddress,
       event,
       args: { escrowId: BigInt(escrowId) },
       fromBlock: from,
@@ -102,13 +102,13 @@ export async function applicationsFromChain(
 
   const [addresses, esc] = await Promise.all([
     client.readContract({
-      address: config.atelierAddress,
+      address: config.journeymanAddress,
       abi,
       functionName: "getEscrowApplications",
       args: [BigInt(escrowId)],
     }) as Promise<readonly string[]>,
     client.readContract({
-      address: config.atelierAddress,
+      address: config.journeymanAddress,
       abi,
       functionName: "getEscrow",
       args: [BigInt(escrowId)],
@@ -136,13 +136,13 @@ export async function escrowFromChain(escrowId: string): Promise<{ escrow: GQLEs
 
   const [esc, rawMilestones, apps] = await Promise.all([
     client.readContract({
-      address: config.atelierAddress,
+      address: config.journeymanAddress,
       abi,
       functionName: "getEscrow",
       args: [BigInt(escrowId)],
     }) as Promise<RawEscrow>,
     client.readContract({
-      address: config.atelierAddress,
+      address: config.journeymanAddress,
       abi,
       functionName: "getMilestones",
       args: [BigInt(escrowId)],

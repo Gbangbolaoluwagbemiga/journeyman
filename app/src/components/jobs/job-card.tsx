@@ -3,10 +3,10 @@ import { encodeJobId } from "@/lib/id-codec";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { AutopilotBadge } from "@/components/atelier/autopilot-badge";
+import { AutopilotBadge } from "@/components/journeyman/autopilot-badge";
 import { motion } from "framer-motion";
 import { Clock, AlertCircle, History, Sprout, Star, Tag } from "lucide-react";
-import { categoryLabel, categoryOf, withoutMarker } from "@/lib/atelier/categories";
+import { categoryLabel, categoryOf, withoutMarker } from "@/lib/journeyman/categories";
 import type { Escrow } from "@/lib/web3/types";
 import { ContractService } from "@/lib/web3/contract-service";
 import { CONTRACTS } from "@/lib/web3/config";
@@ -50,7 +50,7 @@ export function JobCard({
 
   useEffect(() => {
     if (!job.payer) return;
-    const svc = new ContractService(CONTRACTS.ATELIER_ESCROW);
+    const svc = new ContractService(CONTRACTS.JOURNEYMAN_ESCROW);
     svc.getAverageClientRating(job.payer)
       .then((r: any) => { if (r.count > 0) setClientRating({ average: r.averageX100 / 100, count: r.count }); })
       .catch(() => {});
@@ -61,7 +61,7 @@ export function JobCard({
      is worse than no badge. */
   useEffect(() => {
     let live = true;
-    new ContractService(CONTRACTS.ATELIER_ESCROW)
+    new ContractService(CONTRACTS.JOURNEYMAN_ESCROW)
       .isEarningYield(Number(job.id))
       .then((yes) => { if (live) setEarning(yes); })
       .catch(() => {});

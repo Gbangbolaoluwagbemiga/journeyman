@@ -15,7 +15,7 @@ import {PoolIdLibrary} from "v4-core/types/PoolId.sol";
  * Fork tests for the v4 leg, against a real PoolManager.
  *
  * Arc testnet has no Uniswap v4 — both canonical PoolManager addresses return
- * empty code there — so there is nothing to fork on the chain Atelier's escrows
+ * empty code there — so there is nothing to fork on the chain Journeyman's escrows
  * live on. Base mainnet has the real deployment, so that is what these point
  * at: the goal is to exercise the adapter against genuine v4 code, not a mock
  * that agrees with us.
@@ -56,7 +56,7 @@ contract UniswapV4ForkTest is Test {
     int24 tickLower;
     int24 tickUpper;
 
-    /* The vault is AtelierYield in production, not the escrow — see the
+    /* The vault is JourneymanYield in production, not the escrow — see the
        adapter's `vault` field. Named accordingly here so the test does not
        teach the wrong thing. */
     address vault = makeAddr("vault");
@@ -91,7 +91,7 @@ contract UniswapV4ForkTest is Test {
         adapter.configurePool(FEE, TICK_SPACING, address(0), tickLower, tickUpper);
     }
 
-    /// Fund the vault and let the adapter pull from it, the way AtelierYield does.
+    /// Fund the vault and let the adapter pull from it, the way JourneymanYield does.
     function _fundVault(uint256 amount) internal {
         deal(USDC, vault, amount);
         vm.prank(vault);

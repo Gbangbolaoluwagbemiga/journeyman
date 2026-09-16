@@ -27,7 +27,7 @@ export function useAdminStatus() {
     setLoading(true);
     try {
       // Check if contract address is set
-      if (!CONTRACTS.ATELIER_ESCROW) {
+      if (!CONTRACTS.JOURNEYMAN_ESCROW) {
         setIsAdmin(false);
         setIsOwner(false);
         setIsArbiter(false);

@@ -1,4 +1,4 @@
-# Atelier contracts
+# Journeyman contracts
 
 Solidity 0.8.20 · Foundry · OpenZeppelin 5.
 
@@ -35,8 +35,8 @@ all. It currently covers the Autopilot job-manager delegation:
 | `JobManagerBase.t.sol` | — | Shared fixture: mock USDC, the five-party cast, proxy deployment, helpers to build a live Autopilot job |
 | `JobManager.t.sol` | 20 | Appointment, revocation, the permission boundary, disputes mid-Autopilot |
 | `JobManagerInvariant.t.sol` | 5 | The one-way key as a fuzzed invariant, plus liveness checks proving the handler is not inert |
-| `AtelierUpgrade.t.sol` | 15 | Upgrade safety — every one against a proxy holding a live, part-paid escrow |
-| `AtelierE2E.t.sol` | 7 | Whole journeys, with USDC conservation asserted at every hop |
+| `JourneymanUpgrade.t.sol` | 15 | Upgrade safety — every one against a proxy holding a live, part-paid escrow |
+| `JourneymanE2E.t.sol` | 7 | Whole journeys, with USDC conservation asserted at every hop |
 
 The invariant that matters:
 
@@ -65,7 +65,7 @@ implementation, which changes on every upgrade.
 
 ### What upgradeability costs
 
-Atelier's promise is that neither party can unilaterally move money once an
+Journeyman's promise is that neither party can unilaterally move money once an
 escrow is live. Upgradeability puts one asterisk on it: **the owner can replace
 the implementation**, and a malicious replacement could do anything to funds
 already locked.
@@ -79,7 +79,7 @@ state alone.
 
 ### Before any upgrade
 
-1. `forge test --match-path test/AtelierUpgrade.t.sol` must pass.
+1. `forge test --match-path test/JourneymanUpgrade.t.sol` must pass.
 2. New state variables go **immediately above `__gap`**, and `__gap`'s length
    drops by the slots used. Never reorder, retype, or delete.
 3. Bump `version()` in the same commit as any storage change.

@@ -36,7 +36,7 @@ const WorkReviewSchema = z.object({
   criteriaResults: z.array(CriterionResultSchema),
 });
 
-const SYSTEM_PROMPT = `You are Atelier's Work Reviewer. You review submitted freelance work against the
+const SYSTEM_PROMPT = `You are Journeyman's Work Reviewer. You review submitted freelance work against the
 original acceptance brief, criterion by criterion.
 
 IMPORTANT: Only approve if ALL critical criteria are met (score >= 75). If rejecting, your
@@ -137,11 +137,11 @@ ${visionBlock}`,
    * A submission carrying no link at all was approved 100/100 by
    * openai/gpt-oss-120b on the text "I finished it, trust me." The same input
    * was correctly scored 0 by llama-3.3-70b — so for as long as this decision
-   * was left to the model, whether Atelier paid for nothing depended on which
+   * was left to the model, whether Journeyman paid for nothing depended on which
    * model happened to be serving that day. That is not a defensible place for
    * the most expensive decision in the system to live.
    *
-   * The stated promise is that Atelier never pays out on a freelancer's word
+   * The stated promise is that Journeyman never pays out on a freelancer's word
    * alone. This makes it structural rather than aspirational, and it is model-
    * independent by construction: swap the model tomorrow and it still holds.
    *
@@ -157,7 +157,7 @@ ${visionBlock}`,
    * llama-3.3-70b approved a submission at 100/100 whose only link was an
    * x.com URL that serves no readable content to any automated reader. It had
    * inspected nothing and paid out anyway. gpt-oss declines it — so once again
-   * whether Atelier pays for unverifiable work depended on the model of the day.
+   * whether Journeyman pays for unverifiable work depended on the model of the day.
    *
    * This is NOT the same as penalising the freelancer, and the difference
    * matters: the score is left alone, the criteria are not marked failed, and
@@ -204,7 +204,7 @@ ${visionBlock}`,
 
 export function buildRevisionRequest(review: WorkReviewResult, revisionsRemaining: number): string {
   return `
-Your submission has been reviewed by Atelier AI.
+Your submission has been reviewed by Journeyman AI.
 
 Score: ${review.score}/100
 Status: Revision Required (${revisionsRemaining} revision round${revisionsRemaining !== 1 ? "s" : ""} remaining)

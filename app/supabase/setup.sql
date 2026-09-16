@@ -1,4 +1,4 @@
--- Atelier — complete database setup, in one paste.
+-- Journeyman — complete database setup, in one paste.
 --
 -- Every migration in migrations/, concatenated in dependency order. Paste the
 -- whole file into the Supabase SQL editor of a NEW project and run it once.

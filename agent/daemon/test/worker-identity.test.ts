@@ -36,7 +36,7 @@ vi.mock("../src/workers/wallets.js", () => ({
   withdrawTo: vi.fn(),
 }));
 vi.mock("../src/agent/handover.js", () => ({ criteriaFor: () => ({ criteria: [], source: "none" }) }));
-vi.mock("../src/web3/atelier.js", () => ({}));
+vi.mock("../src/web3/journeyman.js", () => ({}));
 vi.mock("../src/circle/circleSigner.js", () => ({ createSignerFor: vi.fn() }));
 vi.mock("../src/config.js", () => ({ config: { applicationWindowMinutes: 3 } }));
 vi.mock("../src/graph/client.js", () => ({ graphQuery: vi.fn() }));

@@ -15,8 +15,8 @@ import {
   RatingSubmitted,
   JobManagerSet,
   JobManagerRevoked,
-  Atelier,
-} from "../generated/Atelier/Atelier"
+  Journeyman,
+} from "../generated/Journeyman/Journeyman"
 import { Escrow, Milestone, Evidence, Application, Rating, ManagerEvent } from "../generated/schema"
 
 /**
@@ -62,7 +62,7 @@ export function handleEscrowCreated(event: EscrowCreated): void {
    * would kill indexing for every escrow, and a missing title is worth far less
    * than a working index.
    */
-  let contract = Atelier.bind(event.address)
+  let contract = Journeyman.bind(event.address)
   let onChain = contract.try_getEscrow(event.params.escrowId)
   if (!onChain.reverted) {
     entity.projectTitle = onChain.value.projectTitle

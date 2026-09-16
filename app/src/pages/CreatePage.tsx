@@ -9,7 +9,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { ARC_TESTNET } from "@/lib/web3/config";
 
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { categoryMarker, type CategoryId } from "@/lib/atelier/categories";
+import { categoryMarker, type CategoryId } from "@/lib/journeyman/categories";
 import { ProjectDetailsStep } from "@/components/create/project-details-step";
 import { MilestonesStep } from "@/components/create/milestones-step";
 import { ReviewStep } from "@/components/create/review-step";
@@ -17,7 +17,7 @@ import { useCreateEscrow } from "@/hooks/use-escrows";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertCircle } from "lucide-react";
 import { parseEther, parseUnits } from "viem";
-import { AUTOPILOT_BRIEF_KEY } from "@/lib/atelier/agent-api";
+import { AUTOPILOT_BRIEF_KEY } from "@/lib/journeyman/agent-api";
 
 const USDC_ADDRESS = (
   (import.meta.env.VITE_USDC_TOKEN_CONTRACT as string | undefined) ?? ""
@@ -363,7 +363,7 @@ export default function CreateEscrowPage() {
           description: "Approve this first — it is what waives the platform fee.",
         });
         const { ContractService } = await import("@/lib/web3/contract-service");
-        await new ContractService(CONTRACTS.ATELIER_ESCROW).setWorkIntent(
+        await new ContractService(CONTRACTS.JOURNEYMAN_ESCROW).setWorkIntent(
           true,
           writeContractAsync,
         );

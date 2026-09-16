@@ -18,7 +18,7 @@ import "./JobManagerBase.t.sol";
  * A handler that only offers the permitted calls proves nothing.
  */
 contract ManagerHandler is Test {
-    Atelier public sf;
+    Journeyman public sf;
     MockUSDC public usdc;
 
     address public client;
@@ -30,7 +30,7 @@ contract ManagerHandler is Test {
     uint256 public managerCallsMade;
 
     constructor(
-        Atelier _sf,
+        Journeyman _sf,
         MockUSDC _usdc,
         address _client,
         address _manager,

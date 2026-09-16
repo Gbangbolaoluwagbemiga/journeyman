@@ -36,13 +36,13 @@ vi.mock("@/components/rating/rating-dialog", () => ({ RatingDialog: () => null }
 // Same reason as the stubs above, plus one of its own: AutopilotControl reads
 // the job manager through wagmi's useWriteContract, so mounting it for real
 // would make this file require a WagmiProvider to test milestone prop mapping.
-// Its own behaviour is covered in test/atelier/autopilot-control.test.tsx.
-vi.mock("@/components/atelier/autopilot-control", () => ({ AutopilotControl: () => null }));
-vi.mock("@/components/atelier/job-decision-log", () => ({ JobDecisionLog: () => null }));
+// Its own behaviour is covered in test/journeyman/autopilot-control.test.tsx.
+vi.mock("@/components/journeyman/autopilot-control", () => ({ AutopilotControl: () => null }));
+vi.mock("@/components/journeyman/job-decision-log", () => ({ JobDecisionLog: () => null }));
 // Same reason as the two above: it opens a wagmi write, and this suite renders
 // the card without a WagmiProvider because it is testing prop plumbing, not chain calls.
-vi.mock("@/components/atelier/post-dispute-choice", () => ({ PostDisputeChoice: () => null }));
-vi.mock("@/components/atelier/yield-opt-in", () => ({ YieldOptIn: () => null }));
+vi.mock("@/components/journeyman/post-dispute-choice", () => ({ PostDisputeChoice: () => null }));
+vi.mock("@/components/journeyman/yield-opt-in", () => ({ YieldOptIn: () => null }));
 
 /*
  * Mock wagmi itself rather than stubbing each child that reaches for it.

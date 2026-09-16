@@ -5,8 +5,8 @@
 // Keeping the surface out of here is what makes the second door cost a day
 // instead of a week, and what lets us change our minds about surfaces later.
 //
-// The architectural property that makes all of this cheap: Atelier's poller reads
-// the Atelier subgraph, not a list of applicants it maintains. It has no idea
+// The architectural property that makes all of this cheap: Journeyman's poller reads
+// the Journeyman subgraph, not a list of applicants it maintains. It has no idea
 // who produced an application. So a worker applying through this service flows
 // into reviewApplications → acceptFreelancer → reviewMilestone → approveMilestone
 // with zero changes to the scorer, the reviewer, the agent, the store, the SSE
@@ -17,7 +17,7 @@ import crypto from "node:crypto";
 import * as store from "../store.js";
 import { publishWorkerEvent } from "../events.js";
 import { criteriaFor as handoverCriteriaFor, previewCriteria } from "../agent/handover.js";
-import * as atelier from "../web3/atelier.js";
+import * as journeyman from "../web3/journeyman.js";
 import { createSignerFor, signMessageAsWallet } from "../circle/circleSigner.js";
 import { config } from "../config.js";
 import { categoryLabel, categoryOf } from "../categories.js";
@@ -45,12 +45,12 @@ export interface JoinParams {
 }
 
 /**
- * Join Atelier.
+ * Join Journeyman.
  *
  * Managed mode (the default) provisions a real MPC wallet and drips enough for
  * gas, and the person is never told either happened — because why would you tell
  * them. Bring-your-own mode records their address and provisions nothing; for
- * those users Atelier is a notifier and coordinator, never a custodian.
+ * those users Journeyman is a notifier and coordinator, never a custodian.
  */
 export async function join(params: JoinParams): Promise<store.WorkerRow> {
   const handle = params.handle.trim();
@@ -178,9 +178,9 @@ export async function openQuests(): Promise<Quest[]> {
   const own = ownQuests();
   const mine = new Set(own.map((q) => q.escrowId));
 
-  let onChain: Awaited<ReturnType<typeof atelier.openEscrows>>;
+  let onChain: Awaited<ReturnType<typeof journeyman.openEscrows>>;
   try {
-    onChain = await atelier.openEscrows();
+    onChain = await journeyman.openEscrows();
   } catch (err) {
     console.warn(
       "[quests] chain could not list open jobs, showing this agent's own:",
@@ -233,7 +233,7 @@ export async function openQuestsFor(workerId: string): Promise<Quest[]> {
   return Promise.all(
     quests.map(async (q) => {
       try {
-        return { ...q, alreadyApplied: await atelier.hasApplied(BigInt(q.escrowId), address) };
+        return { ...q, alreadyApplied: await journeyman.hasApplied(BigInt(q.escrowId), address) };
       } catch {
         return q; // a chain hiccup must not empty someone's job board
       }
@@ -251,7 +251,7 @@ export async function openQuestsFor(workerId: string): Promise<Quest[]> {
  *
  * Worse than the failure was the message. The raw error says "insufficient
  * funds", which the API's sanitiser matched to its treasury rule and rendered as
- * "Atelier's treasury doesn't hold enough USDC" — telling a freelancer that OUR
+ * "Journeyman's treasury doesn't hold enough USDC" — telling a freelancer that OUR
  * wallet was empty when the issue was a drip in flight to theirs.
  */
 async function ensureGas(worker: store.WorkerRow): Promise<void> {
@@ -275,7 +275,7 @@ const MIN_GAS_USDC = Number(process.env.WORKER_MIN_GAS_USDC ?? 0.01);
 function signerFor(worker: store.WorkerRow) {
   if (worker.mode === "own") {
     throw new UserFacingError(
-      "You signed up with your own wallet, so Atelier can't sign for you — apply from Atelier with your wallet and Atelier will still see it.",
+      "You signed up with your own wallet, so Journeyman can't sign for you — apply from Journeyman with your wallet and Journeyman will still see it.",
     );
   }
   if (!worker.walletAddress) throw new UserFacingError("No wallet on this account yet.");
@@ -285,9 +285,9 @@ function signerFor(worker: store.WorkerRow) {
 /**
  * Apply to a commission.
  *
- * The freelancer's OWN wallet signs this, not Atelier's — Atelier authorises
- * applyToJob on msg.sender, so an application signed by Atelier would record
- * Atelier as the applicant. Their tap is the instruction; Atelier is the broker
+ * The freelancer's OWN wallet signs this, not Journeyman's — Journeyman authorises
+ * applyToJob on msg.sender, so an application signed by Journeyman would record
+ * Journeyman as the applicant. Their tap is the instruction; Journeyman is the broker
  * executing it in their name.
  */
 /**
@@ -328,7 +328,7 @@ export async function apply(
    * confident and the only thing separating applicants is how well they write.
    * Someone with ten years of logos had no way to show it.
    *
-   * A LINK rather than an upload, deliberately. Atelier has no file storage, and
+   * A LINK rather than an upload, deliberately. Journeyman has no file storage, and
    * the obvious shortcut — accepting a Telegram upload and putting its URL
    * on-chain — would be a security hole: Telegram's file URLs embed the bot
    * token, so that would publish our credentials permanently on a public chain.
@@ -351,7 +351,7 @@ export async function apply(
   // twice, and the scorer ranking someone against themselves.
   const signer = signerFor(worker);
   await ensureGas(worker);
-  if (await atelier.hasApplied(BigInt(escrowId), signer.address)) {
+  if (await journeyman.hasApplied(BigInt(escrowId), signer.address)) {
     throw new UserFacingError(
       "You've already applied to this one — the agent has your application and will come back to you either way.",
     );
@@ -359,18 +359,18 @@ export async function apply(
 
   // Labelled rather than concatenated, so the scorer can tell the applicant's
   // own words from a link they provided, and so the link survives as something
-  // readable on-chain and on Atelier's own interface.
+  // readable on-chain and on Journeyman's own interface.
   const full = portfolio ? `${letter}\n\nPast work: ${portfolio}` : letter;
 
   const timeline = proposedTimelineDays ?? (await defaultTimelineFor(escrowId));
-  const txHash = await atelier.applyToJob(BigInt(escrowId), full, BigInt(timeline), signer);
+  const txHash = await journeyman.applyToJob(BigInt(escrowId), full, BigInt(timeline), signer);
   return { txHash };
 }
 
 /**
  * Submit finished work for a milestone.
  *
- * `startWork` is called first and its failure swallowed on purpose: Atelier
+ * `startWork` is called first and its failure swallowed on purpose: Journeyman
  * requires the lifecycle step, but it reverts if the job is already in progress,
  * and a worker submitting their second milestone should not be shown a contract
  * error about a state transition that already happened.
@@ -390,7 +390,7 @@ export async function submit(
   /**
    * Are you actually the person hired for this job?
    *
-   * Atelier answers this with Unauthorized(), which is correct and useless:
+   * Journeyman answers this with Unauthorized(), which is correct and useless:
    * a freelancer typed /submit 61 for a job still open for applications that
    * they had never applied to, and got a raw viem stack trace — calldata,
    * gas estimation error, a link to the viem docs — after their gas had already
@@ -401,7 +401,7 @@ export async function submit(
    */
   const wallet = worker.walletAddress?.toLowerCase();
   try {
-    const escrow = (await atelier.getEscrow(BigInt(escrowId))) as { beneficiary?: string };
+    const escrow = (await journeyman.getEscrow(BigInt(escrowId))) as { beneficiary?: string };
     const hired = (escrow?.beneficiary ?? "").toLowerCase();
     const nobodyHired = !hired || /^0x0{40}$/.test(hired);
     if (nobodyHired) {
@@ -441,7 +441,7 @@ export async function submit(
    */
   let alreadyStarted = false;
   try {
-    const esc = (await atelier.getEscrow(BigInt(escrowId))) as { workStarted?: boolean };
+    const esc = (await journeyman.getEscrow(BigInt(escrowId))) as { workStarted?: boolean };
     alreadyStarted = esc.workStarted === true;
   } catch {
     /* unknown — send it and let the contract decide */
@@ -449,12 +449,12 @@ export async function submit(
 
   if (!alreadyStarted) {
     try {
-      await atelier.startWork(BigInt(escrowId), signer);
+      await journeyman.startWork(BigInt(escrowId), signer);
     } catch {
       // already started — expected on every milestone after the first
     }
   }
-  const txHash = await atelier.submitMilestone(BigInt(escrowId), BigInt(index), text, signer);
+  const txHash = await journeyman.submitMilestone(BigInt(escrowId), BigInt(index), text, signer);
 
   /*
    * Tell somebody. Nothing here did.
@@ -525,7 +525,7 @@ async function resolveMilestone(escrowId: string): Promise<number> {
    */
   let onChainStatuses: number[] | null = null;
   try {
-    const onChain = (await atelier.getMilestones(BigInt(escrowId))) as readonly { status: number }[];
+    const onChain = (await journeyman.getMilestones(BigInt(escrowId))) as readonly { status: number }[];
     expected = onChain.length;
     onChainStatuses = onChain.map((m) => Number(m.status));
   } catch {
@@ -687,7 +687,7 @@ async function hiredEscrowIds(me: `0x${string}`): Promise<{ ids: string[]; answe
   try {
     /* Reached either because the subgraph is unavailable, or because it said
        "none" and that is the one answer worth a second opinion. */
-    const ids = await atelier.hiredEscrowsFor(me);
+    const ids = await journeyman.hiredEscrowsFor(me);
     return { ids: ids.map((id) => id.toString()), answered: true };
   } catch (err) {
     /*
@@ -743,7 +743,7 @@ export async function myWork(workerId: string): Promise<WorkRow[]> {
     candidateIds.map(async (escrowId) => {
       if (hiredFor.has(escrowId)) return { hired: true, applied: true, known: true };
       try {
-        return { hired: false, applied: await atelier.hasApplied(BigInt(escrowId), me), known: true };
+        return { hired: false, applied: await journeyman.hasApplied(BigInt(escrowId), me), known: true };
       } catch {
         /* A hiccup hides THIS row rather than breaking the list — but it is
            recorded as not-known, because "we could not ask" and "they are not
@@ -761,7 +761,7 @@ export async function myWork(workerId: string): Promise<WorkRow[]> {
     (await Promise.all(
       needsEscrow.map(async (id) => {
         try {
-          return [id, await atelier.getEscrow(BigInt(id))] as const;
+          return [id, await journeyman.getEscrow(BigInt(id))] as const;
         } catch {
           return [id, null] as const;
         }
@@ -808,7 +808,7 @@ export async function myWork(workerId: string): Promise<WorkRow[]> {
     candidateIds.map(async (escrowId, i) => {
       if (!involvement[i]!.hired) return;
       try {
-        const ms = (await atelier.getMilestones(BigInt(escrowId))) as readonly {
+        const ms = (await journeyman.getMilestones(BigInt(escrowId))) as readonly {
           status: number;
           amount: bigint;
           resolvedAt: bigint;
@@ -845,7 +845,7 @@ export async function myWork(workerId: string): Promise<WorkRow[]> {
       }
 
       try {
-        reviewers.set(escrowId, (await atelier.jobManagerOf(BigInt(escrowId))) ? "agent" : "client");
+        reviewers.set(escrowId, (await journeyman.jobManagerOf(BigInt(escrowId))) ? "agent" : "client");
       } catch {
         /* unknown — say nothing rather than promise a reviewer we cannot confirm */
       }
@@ -1104,14 +1104,14 @@ export async function signUploadAuth(
    * authorise an upload against any escrow number somebody cared to type, and
    * escrow numbers are printed on every card.
    */
-  const esc = (await atelier.getEscrow(BigInt(escrowId))) as { beneficiary?: string };
+  const esc = (await journeyman.getEscrow(BigInt(escrowId))) as { beneficiary?: string };
   if ((esc.beneficiary ?? "").toLowerCase() !== me.toLowerCase()) {
     throw new UserFacingError("That job is not yours to deliver to.");
   }
 
   const timestamp = String(Date.now());
   const message = [
-    "Atelier file upload authorization",
+    "Journeyman file upload authorization",
     `Escrow: ${escrowId}`,
     `Milestone: ${milestoneIndex}`,
     `Wallet: ${me.toLowerCase()}`,
@@ -1201,7 +1201,7 @@ export async function deliveryTarget(escrowId: string): Promise<{
     | null = null;
 
   try {
-    const onChain = (await atelier.getMilestones(BigInt(escrowId))) as readonly {
+    const onChain = (await journeyman.getMilestones(BigInt(escrowId))) as readonly {
       amount: bigint;
       requirements: string;
       description: string;
@@ -1254,7 +1254,7 @@ export async function deliveryTarget(escrowId: string): Promise<{
      the exact rubric a machine scores against, or as the client's notes. */
   let agentReviewed = false;
   try {
-    agentReviewed = (await atelier.jobManagerOf(BigInt(escrowId))) !== null;
+    agentReviewed = (await journeyman.jobManagerOf(BigInt(escrowId))) !== null;
   } catch {
     /* unknown — say nothing rather than promise a reviewer we cannot confirm */
   }
@@ -1369,7 +1369,7 @@ export async function deliveryTarget(escrowId: string): Promise<{
 
   if (!disputeOutcome || (disputeOutcome.freelancerUsdc === 0 && disputeOutcome.clientUsdc === 0)) {
     try {
-      const awards = await atelier.disputeAwards(BigInt(escrowId));
+      const awards = await journeyman.disputeAwards(BigInt(escrowId));
       const mine = awards.find((a) => Number(a.milestoneIndex) === index);
       if (mine) {
         /* disputeAwards already returns USDC, not base units. */
@@ -1556,7 +1556,7 @@ export async function commissionAsWorker(input: {
    * is emphatic that this is the depositor's call — "it is their capital at
    * risk, so the answer is theirs" — and it can never be changed once given.
    * A default the caller can see and override is a choice; a constant buried in
-   * the daemon is Atelier answering a question that was addressed to them.
+   * the daemon is Journeyman answering a question that was addressed to them.
    */
   putToWork?: boolean;
 }): Promise<{
@@ -1570,7 +1570,7 @@ export async function commissionAsWorker(input: {
   if (!worker) throw new UserFacingError("Unknown worker.");
 
   /* Throws with the right sentence for somebody who brought their own keys —
-     Atelier cannot sign for them, and should not pretend otherwise. */
+     Journeyman cannot sign for them, and should not pretend otherwise. */
   const signer = signerFor(worker);
 
   const milestones = input.milestones.filter((m) => m.description.trim() && m.amount > 0);
@@ -1604,7 +1604,7 @@ export async function commissionAsWorker(input: {
    * their budget in the wallet cannot post — and the number they need to see is
    * the total, not the shortfall against a figure they never entered.
    */
-  const { deposit, fee } = await atelier.quoteDeposit(total);
+  const { deposit, fee } = await journeyman.quoteDeposit(total);
   const held = toBase(Number(await workerBalance(worker.walletAddress as `0x${string}`)));
   if (held < deposit) {
     throw new UserFacingError(
@@ -1632,7 +1632,7 @@ export async function commissionAsWorker(input: {
   });
 
   try {
-    const { escrowId, txHash } = await atelier.createEscrow(
+    const { escrowId, txHash } = await journeyman.createEscrow(
       {
         totalAmount: total,
         durationDays: BigInt(Math.max(1, Math.round(input.durationDays))),
@@ -1672,7 +1672,7 @@ export async function commissionAsWorker(input: {
     let earning = false;
     if (input.putToWork !== false) {
       try {
-        await atelier.setYieldOptIn(escrowId, true, signer);
+        await journeyman.setYieldOptIn(escrowId, true, signer);
         earning = true;
       } catch (err) {
         console.warn(
@@ -1685,7 +1685,7 @@ export async function commissionAsWorker(input: {
     let handedOver = false;
     if (input.handToAutopilot) {
       try {
-        await atelier.setJobManager(escrowId, config.circleWalletAddress as `0x${string}`, signer);
+        await journeyman.setJobManager(escrowId, config.circleWalletAddress as `0x${string}`, signer);
         handedOver = true;
       } catch (err) {
         console.warn(

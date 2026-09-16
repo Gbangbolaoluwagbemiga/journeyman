@@ -3,7 +3,7 @@ import { encodeJobId } from "@/lib/id-codec";
 import { useWriteContract, useReadContract } from "wagmi";
 import { contractService } from "@/lib/web3/contract-service";
 import { CONTRACTS } from "@/lib/web3/config";
-import AtelierABI from "@/lib/web3/AtelierABI.json";
+import JourneymanABI from "@/lib/web3/JourneymanABI.json";
 import useWalletStore from "@/store/wallet.store";
 import { toast } from "@/hooks/use-toast";
 import { erc20Abi } from "@/lib/web3/abis";
@@ -15,8 +15,8 @@ import {
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as const;
 
 function contractAddr() {
-  const addr = CONTRACTS.ATELIER_ESCROW;
-  if (!addr) throw new Error("VITE_ATELIER_CONTRACT_ADDRESS is not set");
+  const addr = CONTRACTS.JOURNEYMAN_ESCROW;
+  if (!addr) throw new Error("VITE_JOURNEYMAN_CONTRACT_ADDRESS is not set");
   return addr as `0x${string}`;
 }
 
@@ -197,7 +197,7 @@ export function useCreateEscrow() {
 
       const hash = await writeContractAsync({
         address: contractAddr(),
-        abi: AtelierABI.abi,
+        abi: JourneymanABI.abi,
         functionName: "createEscrow",
         args: [
           beneficiary,
@@ -237,7 +237,7 @@ export function useCreateEscrow() {
       for (const log of receipt.logs) {
         try {
           const decoded = decodeEventLog({
-            abi: AtelierABI.abi,
+            abi: JourneymanABI.abi,
             data: log.data,
             topics: log.topics,
           });
@@ -296,7 +296,7 @@ export function useCreateEscrow() {
           }
         } catch (e) {
           // Non-fatal — escrow is already created, just log
-          console.warn("[atelier] Failed to notify directly assigned freelancer:", e);
+          console.warn("[journeyman] Failed to notify directly assigned freelancer:", e);
         }
       }
     },
@@ -347,7 +347,7 @@ export function useStartWork() {
       if (!address) throw new Error("Wallet not connected");
       return writeContractAsync({
         address: contractAddr(),
-        abi: AtelierABI.abi,
+        abi: JourneymanABI.abi,
         functionName: "startWork",
         args: [BigInt(escrowId)],
       });
@@ -399,7 +399,7 @@ export function useSubmitMilestone() {
       if (!address) throw new Error("Wallet not connected");
       return writeContractAsync({
         address: contractAddr(),
-        abi: AtelierABI.abi,
+        abi: JourneymanABI.abi,
         functionName: "submitMilestone",
         args: [BigInt(params.escrow_id), BigInt(params.milestone_index), params.description],
       });
@@ -425,7 +425,7 @@ export function useApproveMilestone() {
       if (!address) throw new Error("Wallet not connected");
       return writeContractAsync({
         address: contractAddr(),
-        abi: AtelierABI.abi,
+        abi: JourneymanABI.abi,
         functionName: "approveMilestone",
         args: [BigInt(params.escrow_id), BigInt(params.milestone_index)],
       });
@@ -451,7 +451,7 @@ export function useRejectMilestone() {
       if (!address) throw new Error("Wallet not connected");
       return writeContractAsync({
         address: contractAddr(),
-        abi: AtelierABI.abi,
+        abi: JourneymanABI.abi,
         functionName: "rejectMilestone",
         args: [BigInt(params.escrow_id), BigInt(params.milestone_index), params.reason],
       });
@@ -477,7 +477,7 @@ export function useDisputeMilestone() {
       if (!address) throw new Error("Wallet not connected");
       return writeContractAsync({
         address: contractAddr(),
-        abi: AtelierABI.abi,
+        abi: JourneymanABI.abi,
         functionName: "disputeMilestone",
         args: [BigInt(params.escrow_id), BigInt(params.milestone_index), params.reason],
       });
@@ -503,7 +503,7 @@ export function useEmergencyRefund() {
       if (!address) throw new Error("Wallet not connected");
       return writeContractAsync({
         address: contractAddr(),
-        abi: AtelierABI.abi,
+        abi: JourneymanABI.abi,
         functionName: "emergencyRefundAfterDeadline",
         args: [BigInt(escrowId)],
       });
@@ -535,7 +535,7 @@ export function useApplyToJob() {
       if (!address) throw new Error("Wallet not connected");
       return writeContractAsync({
         address: contractAddr(),
-        abi: AtelierABI.abi,
+        abi: JourneymanABI.abi,
         functionName: "applyToJob",
         args: [BigInt(params.escrow_id), params.cover_letter, BigInt(params.proposed_timeline)],
       });
@@ -583,7 +583,7 @@ export function useAcceptFreelancer() {
       if (!address) throw new Error("Wallet not connected");
       return writeContractAsync({
         address: contractAddr(),
-        abi: AtelierABI.abi,
+        abi: JourneymanABI.abi,
         functionName: "acceptFreelancer",
         args: [BigInt(params.escrow_id), params.freelancer as `0x${string}`],
       });
@@ -608,7 +608,7 @@ export function useSubmitEvidence() {
       if (!address) throw new Error("Wallet not connected");
       return writeContractAsync({
         address: contractAddr(),
-        abi: AtelierABI.abi,
+        abi: JourneymanABI.abi,
         functionName: "submitEvidence",
         args: [BigInt(params.escrow_id), BigInt(params.milestone_index), params.cid],
       });
@@ -632,7 +632,7 @@ export function useExtendDeadline() {
       if (!address) throw new Error("Wallet not connected");
       return writeContractAsync({
         address: contractAddr(),
-        abi: AtelierABI.abi,
+        abi: JourneymanABI.abi,
         functionName: "extendDeadline",
         args: [BigInt(params.escrow_id), BigInt(params.extra_days)],
       });
@@ -657,7 +657,7 @@ export function useSubmitRating() {
       if (!address) throw new Error("Wallet not connected");
       return writeContractAsync({
         address: contractAddr(),
-        abi: AtelierABI.abi,
+        abi: JourneymanABI.abi,
         functionName: "submitRating",
         args: [BigInt(params.escrow_id), params.score, params.review],
       });

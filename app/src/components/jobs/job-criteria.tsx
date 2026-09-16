@@ -16,7 +16,7 @@
 
 import { useEffect, useState } from "react";
 import { ListChecks, Loader2 } from "lucide-react";
-import { fetchJobCriteria, AUTOPILOT_CONFIGURED } from "@/lib/atelier/agent-api";
+import { fetchJobCriteria, AUTOPILOT_CONFIGURED } from "@/lib/journeyman/agent-api";
 
 export function JobCriteria({
   escrowId,

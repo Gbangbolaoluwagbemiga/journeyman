@@ -4,7 +4,7 @@
 // gasless EIP-3009 authorization, settled sub-cent via Gateway batching.
 //
 // This is the commission fee that OPENS the order — not the job budget. The job
-// budget is a separate amount locked in Atelier escrow once the brief is
+// budget is a separate amount locked in Journeyman escrow once the brief is
 // generated (see index.ts /api/hire handler). Fee = pay-per-call; escrow = the vault.
 
 import type { IncomingMessage, ServerResponse } from "node:http";
@@ -18,7 +18,7 @@ const ARC_TESTNET_NETWORK = `eip155:${5042002}`;
  * `true` if the caller paid and the handler should proceed, `false` if the
  * middleware already wrote a 402 (or an error) and the caller must stop.
  */
-export function createAtelierPaywall(sellerAddress: `0x${string}`, priceUsdc: string) {
+export function createJourneymanPaywall(sellerAddress: `0x${string}`, priceUsdc: string) {
   const paywall = createGatewayMiddleware({
     sellerAddress,
     networks: ARC_TESTNET_NETWORK,

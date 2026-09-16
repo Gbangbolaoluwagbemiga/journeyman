@@ -2,7 +2,7 @@ import { encodeJobId } from "@/lib/id-codec";
 import {
   positionFilledMessage,
   unsuccessfulApplicants,
-} from "@/lib/atelier/hire-notifications";
+} from "@/lib/journeyman/hire-notifications";
 import { useState, useEffect } from "react";
 import { useWriteContract } from "wagmi";
 import { Card } from "@/components/ui/card";
@@ -35,7 +35,7 @@ import { ApprovalsStats } from "@/components/approvals/approvals-stats";
 import { JobCard } from "@/components/approvals/job-card";
 import { ApprovalsLoading } from "@/components/approvals/approvals-loading";
 import { BadgeDisplay, RatingDisplay } from "@/components/rating/badge-display";
-import { humanizeError } from "@/lib/atelier/errors";
+import { humanizeError } from "@/lib/journeyman/errors";
 
 interface JobWithApplications extends Escrow {
   applications: Application[];
@@ -93,7 +93,7 @@ export default function ApprovalsPage() {
 
       // Use ContractService instead of contract.call - it reads from blockchain
       const { ContractService } = await import("@/lib/web3/contract-service");
-      const contractService = new ContractService(CONTRACTS.ATELIER_ESCROW);
+      const contractService = new ContractService(CONTRACTS.JOURNEYMAN_ESCROW);
 
       // Get next escrow ID from blockchain (not hardcoded)
       const nextEscrowId = await contractService.getNextEscrowId();
@@ -222,7 +222,7 @@ export default function ApprovalsPage() {
 
     try {
       const { ContractService } = await import("@/lib/web3/contract-service");
-      const cs = new ContractService(CONTRACTS.ATELIER_ESCROW);
+      const cs = new ContractService(CONTRACTS.JOURNEYMAN_ESCROW);
 
       await cs.acceptFreelancer({
         escrow_id: Number(selectedJobForApproval.id),

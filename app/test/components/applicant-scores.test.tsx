@@ -27,7 +27,7 @@ const managerState = { manager: null as string | null, loaded: true };
 vi.mock("@/hooks/use-decisions", () => ({ useDecisions: () => decisionsState }));
 vi.mock("@/hooks/use-job-manager", () => ({ useJobManager: () => managerState }));
 
-const { ApplicantScores } = await import("@/components/atelier/applicant-scores");
+const { ApplicantScores } = await import("@/components/journeyman/applicant-scores");
 
 const AGENT = "0x2eA30Ff0b1E2925CaB8B8B0406C535f5c1E39946";
 const ME = "0xfC3642978a1a46ff751ee259906E07ddD7d43Bd1";

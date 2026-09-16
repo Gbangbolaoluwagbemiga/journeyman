@@ -1,7 +1,7 @@
 /**
  * DEV-ONLY component preview.
  *
- * Most of Atelier's new surfaces only appear inside a client's own escrow card,
+ * Most of Journeyman's new surfaces only appear inside a client's own escrow card,
  * which means seeing them requires a connected wallet that happens to be the
  * depositor on a job the daemon also knows about. That is a long setup for
  * "does the decision log render", and it is a long setup that has to be redone
@@ -16,11 +16,11 @@
  */
 
 import { useState } from "react";
-import { DecisionLog } from "@/components/atelier/decision-log";
-import { JobDecisionLog } from "@/components/atelier/job-decision-log";
+import { DecisionLog } from "@/components/journeyman/decision-log";
+import { JobDecisionLog } from "@/components/journeyman/job-decision-log";
 import { useDecisions } from "@/hooks/use-decisions";
-import { AUTOPILOT_CONFIGURED } from "@/lib/atelier/agent-api";
-import type { Decision } from "@/lib/atelier/actor";
+import { AUTOPILOT_CONFIGURED } from "@/lib/journeyman/agent-api";
+import type { Decision } from "@/lib/journeyman/actor";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
@@ -65,7 +65,7 @@ export default function DevPreviewPage() {
     <div className="container mx-auto px-4 py-12 max-w-3xl">
       <span className="actor-chip">Dev only</span>
       <h1 className="font-display text-4xl font-bold tracking-tight mt-4">
-        Atelier surfaces
+        Journeyman surfaces
       </h1>
       <p className="text-muted-foreground mt-3">
         Rendered directly, so they can be checked without a wallet. This route

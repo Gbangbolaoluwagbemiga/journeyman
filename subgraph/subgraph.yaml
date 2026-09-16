@@ -3,11 +3,11 @@ schema:
   file: ./schema.graphql
 dataSources:
   - kind: ethereum
-    name: Atelier
+    name: Journeyman
     network: arc-testnet
     source:
       address: "0xA93F832ccaAb62123f82D4c92ec897A6Bdb252BE"
-      abi: Atelier
+      abi: Journeyman
       # The block the ERC1967 proxy was deployed in. Too low and indexing
       # crawls millions of empty blocks; too high and escrows go missing.
       startBlock: 60797735
@@ -23,8 +23,8 @@ dataSources:
         - Rating
         - ManagerEvent
       abis:
-        - name: Atelier
-          file: ../app/contracts/solidity/out/Atelier.sol/Atelier.json
+        - name: Journeyman
+          file: ../app/contracts/solidity/out/Journeyman.sol/Journeyman.json
       eventHandlers:
         # EscrowCreated now includes platformFee as 7th param
         - event: EscrowCreated(indexed uint256,indexed address,indexed address,address[],uint256,uint256,uint256,address,uint256,bool)

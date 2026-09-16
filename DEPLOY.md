@@ -54,7 +54,7 @@ changes on every upgrade, the proxy never does. Everything points at the proxy.
 1. **Whitelist USDC**, or nobody can create an escrow:
 
 ```bash
-ATELIER_ADDRESS=<PROXY> forge script script/WhitelistUSDC.s.sol \
+JOURNEYMAN_ADDRESS=<PROXY> forge script script/WhitelistUSDC.s.sol \
   --rpc-url arc_testnet --broadcast
 ```
 
@@ -69,11 +69,11 @@ cast send <PROXY> "authorizeArbiter(address)" <YOUR_ADDRESS> \
 3. **Point the app at it** — `app/.env`:
 
 ```env
-VITE_ATELIER_CONTRACT_ADDRESS=<PROXY>
+VITE_JOURNEYMAN_CONTRACT_ADDRESS=<PROXY>
 ```
 
    and `backend/.env` (`CONTRACT_ADDRESS`), and
-   `agent/daemon/.env` (`ATELIER_CONTRACT_ADDRESS`).
+   `agent/daemon/.env` (`JOURNEYMAN_CONTRACT_ADDRESS`).
 
 4. **Sync the ABI** so the frontend can encode the new functions:
 
@@ -100,7 +100,7 @@ cd app && npm run sync-abi
 | Escrows | none — clean history |
 
 **`VITE_GRAPH_URL` and `GRAPH_URL` are deliberately blank.** The Goldsky
-endpoint indexes the pre-Atelier contract, so leaving it set made Browse Jobs
+endpoint indexes the pre-Journeyman contract, so leaving it set made Browse Jobs
 list 65 escrow ids that do not exist on this contract, each rendering as
 "0 USDC / No description available". Blank means the app falls back to RPC
 multicall against the contract it is actually pointed at. **Fill them in with
@@ -112,7 +112,7 @@ This is the $5,000 Graph track. Goldsky does not qualify; the track asks for
 "an API key from Subgraph Studio".
 
 1. Go to [Subgraph Studio](https://thegraph.com/studio/), connect a wallet.
-2. **Create a Subgraph**, name it `atelier`, network **Arc Testnet**.
+2. **Create a Subgraph**, name it `journeyman`, network **Arc Testnet**.
 3. Copy the **deploy key** it shows you.
 
 Then update the manifest to the new contract — this is why the contract goes

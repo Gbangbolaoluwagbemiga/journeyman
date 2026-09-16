@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { toastError } from "@/lib/atelier/errors";
+import { toastError } from "@/lib/journeyman/errors";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -313,7 +313,7 @@ export default function AdminPage() {
                 <Shield className="h-6 w-6" />
                 Admin Panel
               </CardTitle>
-              <CardDescription>Manage Atelier contract settings</CardDescription>
+              <CardDescription>Manage Journeyman contract settings</CardDescription>
             </CardHeader>
             <CardContent>
               <Alert>
@@ -348,7 +348,7 @@ export default function AdminPage() {
                 <Shield className="h-6 w-6" />
                 Admin Panel
               </CardTitle>
-              <CardDescription>Manage Atelier contract settings</CardDescription>
+              <CardDescription>Manage Journeyman contract settings</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <Alert variant="destructive">
@@ -402,7 +402,7 @@ export default function AdminPage() {
         <div>
           <h1 className="text-4xl font-bold mb-2">Admin Panel</h1>
           <p className="text-muted-foreground">
-            Manage Atelier contract settings and configurations
+            Manage Journeyman contract settings and configurations
           </p>
         </div>
 

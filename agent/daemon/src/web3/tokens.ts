@@ -7,11 +7,11 @@
 // out would revert at createEscrow. The log tells us what to ask about; the
 // mapping is the answer.
 import { erc20Abi, getAddress, type Abi } from "viem";
-import atelierAbi from "./AtelierABI.json" with { type: "json" };
+import journeymanAbi from "./JourneymanABI.json" with { type: "json" };
 import { config } from "../config.js";
-import { getLogClient, getPublicClient } from "./atelier.js";
+import { getLogClient, getPublicClient } from "./journeyman.js";
 
-const abi = atelierAbi as Abi;
+const abi = journeymanAbi as Abi;
 
 export interface WhitelistedToken {
   address: `0x${string}`;
@@ -63,9 +63,9 @@ export async function listWhitelistedTokens(): Promise<WhitelistedToken[]> {
   // not less data.
   const latest = await client.getBlockNumber();
   const seen = new Set<string>();
-  for (let from = config.atelierDeployBlock; from <= latest; from += config.logRangeLimit + 1n) {
+  for (let from = config.journeymanDeployBlock; from <= latest; from += config.logRangeLimit + 1n) {
     const to = from + config.logRangeLimit > latest ? latest : from + config.logRangeLimit;
-    const logs = await client.getLogs({ address: config.atelierAddress, event, fromBlock: from, toBlock: to });
+    const logs = await client.getLogs({ address: config.journeymanAddress, event, fromBlock: from, toBlock: to });
     for (const log of logs) {
       const t = (log as { args?: { token?: string } }).args?.token;
       if (t) seen.add(getAddress(t));
@@ -76,7 +76,7 @@ export async function listWhitelistedTokens(): Promise<WhitelistedToken[]> {
   const stillListed = await Promise.all(
     candidates.map((address) =>
       client
-        .readContract({ address: config.atelierAddress, abi, functionName: "whitelistedTokens", args: [address] })
+        .readContract({ address: config.journeymanAddress, abi, functionName: "whitelistedTokens", args: [address] })
         .then((ok) => (ok ? address : null))
         .catch(() => null),
     ),

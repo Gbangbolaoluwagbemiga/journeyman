@@ -1,7 +1,7 @@
 /**
  * GET HIRED — the door for someone with no wallet.
  *
- * Atelier has two entrances and they are not the same product surface. The main
+ * Journeyman has two entrances and they are not the same product surface. The main
  * app assumes a connected wallet: you sign your own transactions, you hold your
  * own keys, and everything is on-chain from your address. This page assumes
  * none of that.
@@ -20,8 +20,8 @@ import { useCallback, useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Loader2, LogOut, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { WorkerJoin } from "@/components/atelier/worker-join";
-import { WorkerBoard } from "@/components/atelier/worker-board";
+import { WorkerJoin } from "@/components/journeyman/worker-join";
+import { WorkerBoard } from "@/components/journeyman/worker-board";
 import {
   WORKER_DOOR_OPEN,
   currentWorkerId,
@@ -29,7 +29,7 @@ import {
   rememberWorkerAddress,
   me as fetchMe,
   type Worker,
-} from "@/lib/atelier/worker";
+} from "@/lib/journeyman/worker";
 
 const TELEGRAM_BOT = (
   (import.meta.env.VITE_TELEGRAM_BOT as string | undefined) ?? ""
@@ -82,7 +82,7 @@ export default function WorkerPage() {
         </h1>
         <p className="text-muted-foreground mt-3">
           Set <code className="font-mono text-xs">VITE_AGENT_API_URL</code> to a
-          running Atelier agent to open this door.
+          running Journeyman agent to open this door.
         </p>
       </div>
     );

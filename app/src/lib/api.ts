@@ -1,4 +1,4 @@
-/** Local Atelier API default when VITE_API_URL is omitted (dev only). */
+/** Local Journeyman API default when VITE_API_URL is omitted (dev only). */
 const DEFAULT_DEV_API_URL = "http://localhost:8787";
 
 function getApiBase(): string {
@@ -271,7 +271,7 @@ export function buildUploadAuthMessage(
   timestamp: number,
 ): string {
   return [
-    "Atelier file upload authorization",
+    "Journeyman file upload authorization",
     `Escrow: ${escrowId}`,
     `Milestone: ${milestoneIndex}`,
     `Wallet: ${walletAddress.toLowerCase()}`,
@@ -406,7 +406,7 @@ export function buildResolutionAuthMessage(
   timestamp: string | number,
 ): string {
   return [
-    "Atelier dispute resolution note",
+    "Journeyman dispute resolution note",
     `Escrow: ${escrowId}`,
     `Milestone: ${milestoneIndex}`,
     `Arbiter: ${arbiter.toLowerCase()}`,

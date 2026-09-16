@@ -44,7 +44,7 @@ contract SetMilestonesTest is JobManagerBase {
         vm.prank(client);
         sf.setMilestones(id, _amounts(M1, M2, 100e6), _reqs(3));
 
-        Atelier.Milestone[] memory ms = sf.getMilestones(id);
+        Journeyman.Milestone[] memory ms = sf.getMilestones(id);
         assertEq(ms.length, 3, "a third stage exists");
         assertEq(sf.getEscrow(id).totalAmount, 1000e6, "total grew by the new stage");
         // 100 for the work, 2.5 in fee.
@@ -85,7 +85,7 @@ contract SetMilestonesTest is JobManagerBase {
         vm.prank(client);
         sf.setMilestones(id, _amounts(M1, M2, NONE), reqs);
 
-        Atelier.Milestone[] memory ms = sf.getMilestones(id);
+        Journeyman.Milestone[] memory ms = sf.getMilestones(id);
         assertEq(ms[0].requirements, "Three concepts, one refined");
         assertEq(ms[1].requirements, "Source files and a usage guide");
         // description is the freelancer's submission text and must start empty.
@@ -138,7 +138,7 @@ contract SetMilestonesTest is JobManagerBase {
         vm.prank(client);
         sf.setMilestones(id, _amounts(M1 + 10e6, M2, NONE), _reqs(2));
 
-        Atelier.Milestone[] memory ms = sf.getMilestones(id);
+        Journeyman.Milestone[] memory ms = sf.getMilestones(id);
         assertEq(ms.length, 2, "still two stages");
         assertEq(ms[0].amount, M1 + 10e6, "the topped-up stage");
         assertEq(ms[1].amount, M2, "the other stage is untouched");
@@ -153,7 +153,7 @@ contract SetMilestonesTest is JobManagerBase {
         uint256 id = _createOpenJob();
 
         vm.prank(outsider);
-        vm.expectRevert(Atelier.Unauthorized.selector);
+        vm.expectRevert(Journeyman.Unauthorized.selector);
         sf.setMilestones(id, _amounts(M1, NONE, NONE), _reqs(1));
     }
 
@@ -165,7 +165,7 @@ contract SetMilestonesTest is JobManagerBase {
         sf.setJobManager(id, manager);
 
         vm.prank(manager);
-        vm.expectRevert(Atelier.Unauthorized.selector);
+        vm.expectRevert(Journeyman.Unauthorized.selector);
         sf.setMilestones(id, _amounts(M1, NONE, NONE), _reqs(1));
     }
 
@@ -175,7 +175,7 @@ contract SetMilestonesTest is JobManagerBase {
         uint256 id = _liveAutopilotJob();
 
         vm.prank(client);
-        vm.expectRevert(Atelier.CannotCancelAssignedJob.selector);
+        vm.expectRevert(Journeyman.CannotCancelAssignedJob.selector);
         sf.setMilestones(id, _amounts(M1, NONE, NONE), _reqs(1));
     }
 
@@ -184,21 +184,21 @@ contract SetMilestonesTest is JobManagerBase {
     function test_refusesAnEmptyList() public {
         uint256 id = _createOpenJob();
         vm.prank(client);
-        vm.expectRevert(Atelier.InvalidConfig.selector);
+        vm.expectRevert(Journeyman.InvalidConfig.selector);
         sf.setMilestones(id, new uint256[](0), new string[](0));
     }
 
     function test_refusesMismatchedLengths() public {
         uint256 id = _createOpenJob();
         vm.prank(client);
-        vm.expectRevert(Atelier.InvalidConfig.selector);
+        vm.expectRevert(Journeyman.InvalidConfig.selector);
         sf.setMilestones(id, _amounts(M1, M2, NONE), _reqs(1));
     }
 
     function test_refusesAZeroTotal() public {
         uint256 id = _createOpenJob();
         vm.prank(client);
-        vm.expectRevert(Atelier.InvalidAmount.selector);
+        vm.expectRevert(Journeyman.InvalidAmount.selector);
         sf.setMilestones(id, _amounts(0, NONE, NONE), _reqs(1));
     }
 
@@ -206,7 +206,7 @@ contract SetMilestonesTest is JobManagerBase {
         uint256 id = _createOpenJob();
         vm.deal(client, 1 ether);
         vm.prank(client);
-        vm.expectRevert(Atelier.InvalidAmount.selector);
+        vm.expectRevert(Journeyman.InvalidAmount.selector);
         sf.setMilestones{value: 1}(id, _amounts(M1, M2, NONE), _reqs(2));
     }
 
@@ -219,7 +219,7 @@ contract SetMilestonesTest is JobManagerBase {
         vm.prank(client);
         sf.setMilestones(id, _amounts(M1, M2, 100e6), _reqs(3));
 
-        Atelier.Milestone[] memory ms = sf.getMilestones(id);
+        Journeyman.Milestone[] memory ms = sf.getMilestones(id);
         uint256 sum;
         for (uint256 i; i < ms.length; ++i) sum += ms[i].amount;
         assertEq(sum, sf.getEscrow(id).totalAmount, "milestones sum to the total");

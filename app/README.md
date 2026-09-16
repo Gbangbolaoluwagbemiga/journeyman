@@ -1,4 +1,4 @@
-# Atelier — web app
+# Journeyman — web app
 
 The React client. It is one of four deployables, and the documentation for all
 of them lives in one place rather than four:
@@ -20,7 +20,7 @@ a document nobody has a reason to open. So there is no second copy any more.
 
 | Looking for | Where it is |
 |---|---|
-| What Atelier is, and the architecture | [`README.md`](../README.md) |
+| What Journeyman is, and the architecture | [`README.md`](../README.md) |
 | Running all four services locally | [`RUNNING.md`](../RUNNING.md) |
 | Contract, subgraph and OAuth deployment | [`DEPLOY.md`](../DEPLOY.md) |
 | Recreating the database | [`docs/supabase-setup.md`](../docs/supabase-setup.md) |

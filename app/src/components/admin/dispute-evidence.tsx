@@ -68,7 +68,7 @@ export function DisputeEvidence({
 
       // Fetch EvidenceSubmitted events for this escrow and milestone
       const logs = await publicClient.getLogs({
-        address: CONTRACTS.ATELIER_ESCROW as `0x${string}`,
+        address: CONTRACTS.JOURNEYMAN_ESCROW as `0x${string}`,
         event: parseAbiItem('event EvidenceSubmitted(uint256 indexed escrowId, uint256 indexed milestoneIndex, address indexed submitter, string cid)'),
         args: {
           escrowId: BigInt(escrowId),
@@ -115,7 +115,7 @@ export function DisputeEvidence({
     setSubmitting(true);
     try {
       const { ContractService } = await import("@/lib/web3/contract-service");
-      const svc = new ContractService(CONTRACTS.ATELIER_ESCROW);
+      const svc = new ContractService(CONTRACTS.JOURNEYMAN_ESCROW);
 
       // Combine CID and description if description exists
       const fullCid = evidenceDescription 

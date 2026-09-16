@@ -3,7 +3,7 @@ pragma solidity ^0.8.20;
 
 import "./JobManagerBase.t.sol";
 import "./MockYieldAdapter.t.sol";
-import "../src/yield/AtelierYield.sol";
+import "../src/yield/JourneymanYield.sol";
 
 /**
  * WHY A CLIENT WOULD EVER PUT THEIR ESCROW TO WORK.
@@ -21,14 +21,14 @@ import "../src/yield/AtelierYield.sol";
  * asks them to approve.
  */
 contract FeeWaiverTest is JobManagerBase {
-    AtelierYield internal yield_;
+    JourneymanYield internal yield_;
     MockYieldAdapter internal venue;
 
     uint256 internal constant FEE = (BUDGET * 250) / 10000;
 
     function setUp() public override {
         super.setUp();
-        yield_ = new AtelierYield(address(sf));
+        yield_ = new JourneymanYield(address(sf));
         venue = new MockYieldAdapter(address(usdc), address(yield_));
         sf.setYieldController(address(yield_));
         yield_.setYieldAdapter(address(usdc), address(venue));
@@ -105,7 +105,7 @@ contract FeeWaiverTest is JobManagerBase {
         yield_.setWorkIntent(true);
 
         vm.prank(outsider);
-        vm.expectRevert(AtelierYield.NotEscrow.selector);
+        vm.expectRevert(JourneymanYield.NotEscrow.selector);
         yield_.claimIntent(client, 1);
     }
 
@@ -131,7 +131,7 @@ contract FeeWaiverTest is JobManagerBase {
         venue.simulateYield(int256(uint256(50e6)));
         deal(address(usdc), address(venue), usdc.balanceOf(address(venue)) + 50e6);
 
-        Atelier.Milestone[] memory ms = sf.getMilestones(id);
+        Journeyman.Milestone[] memory ms = sf.getMilestones(id);
         for (uint256 i; i < ms.length; ++i) {
             _submit(id, i);
             vm.prank(client);

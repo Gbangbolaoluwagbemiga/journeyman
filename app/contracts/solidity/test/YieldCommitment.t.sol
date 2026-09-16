@@ -3,7 +3,7 @@ pragma solidity ^0.8.20;
 
 import "./JobManagerBase.t.sol";
 import "./MockYieldAdapter.t.sol";
-import "../src/yield/AtelierYield.sol";
+import "../src/yield/JourneymanYield.sol";
 
 /**
  * THE YIELD SHARE IS A TERM OF THE JOB, NOT A SETTING ON IT.
@@ -23,12 +23,12 @@ import "../src/yield/AtelierYield.sol";
  * anything yet.
  */
 contract YieldCommitmentTest is JobManagerBase {
-    AtelierYield internal yield_;
+    JourneymanYield internal yield_;
     MockYieldAdapter internal venue;
 
     function setUp() public override {
         super.setUp();
-        yield_ = new AtelierYield(address(sf));
+        yield_ = new JourneymanYield(address(sf));
         venue = new MockYieldAdapter(address(usdc), address(yield_));
         sf.setYieldController(address(yield_));
         yield_.setYieldAdapter(address(usdc), address(venue));
@@ -73,7 +73,7 @@ contract YieldCommitmentTest is JobManagerBase {
         yield_.setYieldOptIn(id, true);
 
         vm.prank(client);
-        vm.expectRevert(AtelierYield.ChoiceAlreadyMade.selector);
+        vm.expectRevert(JourneymanYield.ChoiceAlreadyMade.selector);
         yield_.setYieldOptIn(id, false);
 
         assertTrue(yield_.yieldOptIn(id), "the term changed after it was set");
@@ -85,7 +85,7 @@ contract YieldCommitmentTest is JobManagerBase {
         yield_.setYieldOptIn(id, false);
 
         vm.prank(client);
-        vm.expectRevert(AtelierYield.ChoiceAlreadyMade.selector);
+        vm.expectRevert(JourneymanYield.ChoiceAlreadyMade.selector);
         yield_.setYieldOptIn(id, true);
     }
 
@@ -103,7 +103,7 @@ contract YieldCommitmentTest is JobManagerBase {
         sf.startWork(id);
 
         vm.prank(client);
-        vm.expectRevert(AtelierYield.TooLateToChoose.selector);
+        vm.expectRevert(JourneymanYield.TooLateToChoose.selector);
         yield_.setYieldOptIn(id, true);
     }
 
@@ -130,7 +130,7 @@ contract YieldCommitmentTest is JobManagerBase {
         sf.startWork(id);
 
         vm.prank(client);
-        vm.expectRevert(AtelierYield.TooLateToChoose.selector);
+        vm.expectRevert(JourneymanYield.TooLateToChoose.selector);
         yield_.setYieldOptIn(id, true);
     }
 
@@ -182,7 +182,7 @@ contract YieldCommitmentTest is JobManagerBase {
         uint256 id = _createOpenJob();
 
         vm.prank(outsider);
-        vm.expectRevert(Atelier.Unauthorized.selector);
+        vm.expectRevert(Journeyman.Unauthorized.selector);
         yield_.setYieldOptIn(id, true);
 
         assertFalse(yield_.yieldChoiceMade(id), "a rejected call consumed the choice");
@@ -197,7 +197,7 @@ contract YieldCommitmentTest is JobManagerBase {
     function test_onlyTheDepositorMayAnswer() public {
         uint256 id = _createOpenJob();
         vm.prank(outsider);
-        vm.expectRevert(Atelier.Unauthorized.selector);
+        vm.expectRevert(Journeyman.Unauthorized.selector);
         yield_.setYieldOptIn(id, true);
     }
 
@@ -212,14 +212,14 @@ contract YieldCommitmentTest is JobManagerBase {
         sf.setJobManager(id, manager);
 
         vm.prank(manager);
-        vm.expectRevert(Atelier.Unauthorized.selector);
+        vm.expectRevert(Journeyman.Unauthorized.selector);
         yield_.setYieldOptIn(id, true);
     }
 
     function test_theFreelancerCannotTurnItOnForThemselves() public {
         uint256 id = _createOpenJob();
         vm.prank(worker);
-        vm.expectRevert(Atelier.Unauthorized.selector);
+        vm.expectRevert(Journeyman.Unauthorized.selector);
         yield_.setYieldOptIn(id, true);
     }
 }

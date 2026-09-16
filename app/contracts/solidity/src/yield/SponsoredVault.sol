@@ -53,7 +53,7 @@ contract SponsoredVault is IYieldAdapter {
     /// @notice The asset held. address(0) is native, which is USDC on Arc.
     address public immutable token;
 
-    /// @notice The AtelierYield controller. The only address that may move money.
+    /// @notice The JourneymanYield controller. The only address that may move money.
     address public immutable vault;
 
     error NotVault();

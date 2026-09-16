@@ -66,7 +66,7 @@ contract PostDisputeExitTest is JobManagerBase {
         vm.prank(client);
         sf.withdrawJobFunds(id, M2, 1);
 
-        Atelier.Escrow memory esc = sf.getEscrow(id);
+        Journeyman.Escrow memory esc = sf.getEscrow(id);
         assertEq(esc.totalAmount, esc.paidAmount, "escrow still owes something");
     }
 
@@ -85,7 +85,7 @@ contract PostDisputeExitTest is JobManagerBase {
         _submit(id, 1); // the freelancer delivers the second milestone
 
         vm.prank(client);
-        vm.expectRevert(Atelier.MilestoneAlreadyProcessed.selector);
+        vm.expectRevert(Journeyman.MilestoneAlreadyProcessed.selector);
         sf.withdrawJobFunds(id, M2, 1);
     }
 
@@ -101,7 +101,7 @@ contract PostDisputeExitTest is JobManagerBase {
         sf.startWork(id);
 
         vm.prank(client);
-        vm.expectRevert(Atelier.CannotCancelAssignedJob.selector);
+        vm.expectRevert(Journeyman.CannotCancelAssignedJob.selector);
         sf.withdrawJobFunds(id, M2, 1);
     }
 
@@ -113,7 +113,7 @@ contract PostDisputeExitTest is JobManagerBase {
         for (uint256 i; i < 3; ++i) {
             address who = i == 0 ? worker : i == 1 ? manager : outsider;
             vm.prank(who);
-            vm.expectRevert(Atelier.Unauthorized.selector);
+            vm.expectRevert(Journeyman.Unauthorized.selector);
             sf.withdrawJobFunds(id, M2, 1);
         }
     }
@@ -166,10 +166,10 @@ contract ReopenAfterDisputeTest is JobManagerBase {
         vm.prank(client);
         sf.reopenJob(id);
 
-        Atelier.Escrow memory esc = sf.getEscrow(id);
+        Journeyman.Escrow memory esc = sf.getEscrow(id);
         assertTrue(esc.isOpenJob, "not back on the board");
         assertEq(esc.beneficiary, address(0), "still assigned to the old freelancer");
-        assertEq(uint8(esc.status), uint8(Atelier.EscrowStatus.Pending), "not open for applications");
+        assertEq(uint8(esc.status), uint8(Journeyman.EscrowStatus.Pending), "not open for applications");
         assertFalse(esc.workStarted, "still marked as work in progress");
     }
 
@@ -181,7 +181,7 @@ contract ReopenAfterDisputeTest is JobManagerBase {
         vm.prank(client);
         sf.reopenJob(id);
 
-        Atelier.Milestone[] memory ms = sf.getMilestones(id);
+        Journeyman.Milestone[] memory ms = sf.getMilestones(id);
         assertGt(ms[0].submittedAt, 0, "the previous submission was erased");
         assertGt(bytes(ms[0].disputeReason).length, 0, "the disagreement was erased");
         assertGt(bytes(ms[0].resolutionReason).length, 0, "the arbiter's ruling was erased");
@@ -235,7 +235,7 @@ contract ReopenAfterDisputeTest is JobManagerBase {
         sf.acceptFreelancer(id, worker);
 
         vm.prank(client);
-        vm.expectRevert(Atelier.CannotCancelAssignedJob.selector);
+        vm.expectRevert(Journeyman.CannotCancelAssignedJob.selector);
         sf.reopenJob(id);
     }
 
@@ -245,7 +245,7 @@ contract ReopenAfterDisputeTest is JobManagerBase {
         _submit(id, 1); // nothing left untouched
 
         vm.prank(client);
-        vm.expectRevert(Atelier.NothingLeftToFinish.selector);
+        vm.expectRevert(Journeyman.NothingLeftToFinish.selector);
         sf.reopenJob(id);
     }
 
@@ -254,7 +254,7 @@ contract ReopenAfterDisputeTest is JobManagerBase {
         _resolve(id);
 
         vm.prank(worker);
-        vm.expectRevert(Atelier.Unauthorized.selector);
+        vm.expectRevert(Journeyman.Unauthorized.selector);
         sf.reopenJob(id);
     }
 }

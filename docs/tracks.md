@@ -1,6 +1,6 @@
-# What Atelier is submitting for, and where to verify it
+# What Journeyman is submitting for, and where to verify it
 
-Atelier is entered as a **from-scratch** project. It is not registered under the
+Journeyman is entered as a **from-scratch** project. It is not registered under the
 Continuity track, so every Continuity-only prize below is marked ineligible
 rather than claimed.
 
@@ -15,21 +15,21 @@ what this page says it says, the claim is wrong and should be scored as wrong.
 
 ### 🏆 Best Agentic Economy Application with Circle Agent Stack — $1,667
 
-The strongest fit. Atelier is an agent that holds a wallet, decides who to hire
+The strongest fit. Journeyman is an agent that holds a wallet, decides who to hire
 from real signals, and settles the job in USDC.
 
 | What they asked for | Where it is |
 |---|---|
 | Agents with clear decision logic tied to real signals | [`ApplicationScorer.ts`](../agent/daemon/src/agent/ApplicationScorer.ts) scores every applicant in one comparative call. The signals are on-chain history and fetched portfolio evidence, not self-reported claims — [`ApplicantEvidence.ts`](../agent/daemon/src/agent/ApplicantEvidence.ts) |
-| Autonomous spending, payments or settlement in USDC | The agent calls `approveMilestone`, which releases USDC to the freelancer — [`atelier.ts`](../agent/daemon/src/web3/atelier.ts). On Arc, USDC is the native currency, so this is settlement, not a token transfer beside it |
+| Autonomous spending, payments or settlement in USDC | The agent calls `approveMilestone`, which releases USDC to the freelancer — [`journeyman.ts`](../agent/daemon/src/web3/journeyman.ts). On Arc, USDC is the native currency, so this is settlement, not a token transfer beside it |
 | Agent Stack connecting agents to wallets and on-chain actions | Circle Programmable Wallets (MPC) sign every agent action — [`circleSigner.ts:94`](../agent/daemon/src/circle/circleSigner.ts#L94). A wallet is also minted per freelancer so someone with no crypto can be paid — [`wallets.ts`](../agent/daemon/src/workers/wallets.ts) |
-| Agent-to-agent or service payments | x402 both ways. An AI agent pays Atelier to commission a job — [`x402-seller.ts:21`](../agent/daemon/src/circle/x402-seller.ts#L21). Atelier pays marketplace services through Gateway — [`gateway.ts`](../agent/daemon/src/circle/gateway.ts) |
+| Agent-to-agent or service payments | x402 both ways. An AI agent pays Journeyman to commission a job — [`x402-seller.ts:21`](../agent/daemon/src/circle/x402-seller.ts#L21). Journeyman pays marketplace services through Gateway — [`gateway.ts`](../agent/daemon/src/circle/gateway.ts) |
 
 **The part worth reading the code for:** an Autopilot manager can hire, approve,
 reject and escalate, and there is no path by which value reaches it. Enforced at
-two points — [`Atelier.sol:833`](../app/contracts/solidity/src/Atelier.sol#L833)
+two points — [`Journeyman.sol:833`](../app/contracts/solidity/src/Journeyman.sol#L833)
 (a manager cannot be the beneficiary) and
-[`Atelier.sol:797`](../app/contracts/solidity/src/Atelier.sol#L797) (it cannot
+[`Journeyman.sol:797`](../app/contracts/solidity/src/Journeyman.sol#L797) (it cannot
 appoint itself the freelancer on an open job). Fuzzed at 128,000 calls against a
 handler that deliberately attempts every forbidden move —
 [`JobManagerInvariant.t.sol`](../app/contracts/solidity/test/JobManagerInvariant.t.sol).
@@ -39,9 +39,9 @@ handler that deliberately attempts every forbidden move —
 | What they asked for | Where it is |
 |---|---|
 | Meaningful use of Arc and USDC | Every escrow is USDC on Arc. The whole product is settlement |
-| Conditional payments, on-chain automation, multi-step settlement | Milestone escrow: funds lock before a job is visible, and release per milestone against criteria the client approved. Disputes go to a multi-arbiter vote with a confirmation threshold — [`Atelier.sol`](../app/contracts/solidity/src/Atelier.sol) |
+| Conditional payments, on-chain automation, multi-step settlement | Milestone escrow: funds lock before a job is visible, and release per milestone against criteria the client approved. Disputes go to a multi-arbiter vote with a confirmation threshold — [`Journeyman.sol`](../app/contracts/solidity/src/Journeyman.sol) |
 | Treasury workflows | Per-client deposit balances, signed like a withdrawal so nobody spends against someone else's deposit — [`index.ts`](../agent/daemon/src/index.ts) |
-| Why stablecoin-native infrastructure changes what is possible | **The platform fee is not charged.** A client who lets their escrow work approves 2.5% less; the platform takes 40% of what the escrow earns instead, and the freelancer 60%. Money sitting between funding and approval goes to a stable-stable LP, with the investable ceiling derived from the largest imminent claim rather than a percentage — [`AtelierYield.sol`](../app/contracts/solidity/src/yield/AtelierYield.sol), [`FeeWaiver.t.sol`](../app/contracts/solidity/test/FeeWaiver.t.sol) |
+| Why stablecoin-native infrastructure changes what is possible | **The platform fee is not charged.** A client who lets their escrow work approves 2.5% less; the platform takes 40% of what the escrow earns instead, and the freelancer 60%. Money sitting between funding and approval goes to a stable-stable LP, with the investable ceiling derived from the largest imminent claim rather than a percentage — [`JourneymanYield.sol`](../app/contracts/solidity/src/yield/JourneymanYield.sol), [`FeeWaiver.t.sol`](../app/contracts/solidity/test/FeeWaiver.t.sol) |
 
 **The version that did not work, stated because it is the interesting part.**
 The fee was charged and the yield refunded it later. That refund is worth
@@ -77,7 +77,7 @@ counter did not move.
 
 ### ⛔ Best DeFi or Agentic Application ($1,666) — not eligible
 
-Continuity-track only. Atelier is registered from scratch.
+Continuity-track only. Journeyman is registered from scratch.
 
 ### ⛔ Launch on Arc, Continuity ($1,500) — not eligible
 
@@ -121,7 +121,7 @@ unpaid.
 ### ⛔ Best Use of Composable or Standardized Graph Products ($5,000) — not eligible
 
 Stated plainly because the rules say so: *"Simply querying one Subgraph with no
-composition or standardization does not qualify."* Atelier ships one purpose-built
+composition or standardization does not qualify."* Journeyman ships one purpose-built
 subgraph. It composes no second Graph product and implements no standardized
 schema, so this prize is not claimed.
 
@@ -171,7 +171,7 @@ The cap is now **derived** — the largest claim that could arrive next, read fr
 the escrow's own milestones, with the percentage on top rather than instead. A
 threshold is an opinion about risk; a derived reserve answers "what is the worst
 thing that can be asked of me next", and it keeps holding when the escrow's
-shape changes. See [`AtelierYield.sol`](../app/contracts/solidity/src/yield/AtelierYield.sol),
+shape changes. See [`JourneymanYield.sol`](../app/contracts/solidity/src/yield/JourneymanYield.sol),
 `investableCeiling`, and section 4 of [`FEEDBACK.md`](../FEEDBACK.md).
 
 *Why it is not attached to the live escrow.* Uniswap v4 is not on Arc testnet,

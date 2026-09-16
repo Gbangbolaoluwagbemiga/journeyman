@@ -31,7 +31,7 @@ import { useCallback, useEffect, useState } from "react";
 import {
   AUTOPILOT_CONFIGURED,
   fetchManagedEscrowIds,
-} from "@/lib/atelier/agent-api";
+} from "@/lib/journeyman/agent-api";
 import {
   JOB_MANAGER_EVENT,
   knownJobManagers,

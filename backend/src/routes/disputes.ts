@@ -58,7 +58,7 @@ export function buildResolutionAuthMessage(
   timestamp: string,
 ): string {
   return [
-    "Atelier dispute resolution note",
+    "Journeyman dispute resolution note",
     `Escrow: ${escrowId}`,
     `Milestone: ${milestoneIndex}`,
     `Arbiter: ${arbiter.toLowerCase()}`,

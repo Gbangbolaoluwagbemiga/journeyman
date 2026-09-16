@@ -37,7 +37,7 @@ arc_testnet = { key = "${ETHERSCAN_API_KEY}", url = "https://testnet.arcscan.app
 # The default profile is pinned to shanghai for Arc, and PoolManager's lock uses
 # transient storage -- so under the default profile its bytecode halts with
 # EvmError: NotActivated the moment unlock() is called. That is a property of
-# the chain the test forks (Base, which has cancun), not of Atelier's own
+# the chain the test forks (Base, which has cancun), not of Journeyman's own
 # deployment target, so it belongs in its own profile rather than loosening the
 # one that governs what gets deployed to Arc.
 #

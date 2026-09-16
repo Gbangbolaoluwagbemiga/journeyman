@@ -31,14 +31,14 @@ export default function HomePage() {
 
       // Use ContractService instead of contract.call - it reads from blockchain
       const { ContractService } = await import("@/lib/web3/contract-service");
-      const contractService = new ContractService(CONTRACTS.ATELIER_ESCROW);
+      const contractService = new ContractService(CONTRACTS.JOURNEYMAN_ESCROW);
 
       // Get next escrow ID from blockchain (not hardcoded)
       const nextEscrowId = await contractService.getNextEscrowId();
 
       // platformFeeBP is needed to back out the ORIGINAL work value from
       // escrow.platformFee, since the contract decrements escrow.totalAmount
-      // when a client gets refunded in a dispute (Atelier.sol:451).
+      // when a client gets refunded in a dispute (Journeyman.sol:451).
       const platformFeeBP = await contractService.getPlatformFeeBP();
 
       let activeEscrows = 0;
@@ -217,7 +217,7 @@ export default function HomePage() {
         <div className="container mx-auto px-4">
           <div className="text-center mb-16">
             <h2 className="text-4xl md:text-5xl font-bold mb-4 text-balance">
-              How Atelier Works
+              How Journeyman Works
             </h2>
             <p className="text-xl text-muted-foreground text-pretty max-w-2xl mx-auto">
               Simple, secure, and transparent escrow for the Web3 era
@@ -380,7 +380,7 @@ export default function HomePage() {
               Ready to secure your next project?
             </h2>
             <p className="text-xl text-muted-foreground mb-8 text-pretty max-w-2xl mx-auto">
-              Join hundreds of freelancers and clients using Atelier for
+              Join hundreds of freelancers and clients using Journeyman for
               trustless payments
             </p>
             <Link to="/create">

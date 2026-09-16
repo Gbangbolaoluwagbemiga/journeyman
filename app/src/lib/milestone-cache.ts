@@ -1,4 +1,4 @@
-// The Atelier contract overwrites `m.description` when the freelancer
+// The Journeyman contract overwrites `m.description` when the freelancer
 // submits a milestone, so the original brief is unrecoverable from chain
 // after submission. We snapshot it to localStorage the first time we see a
 // milestone in NotStarted/pending state, then surface it alongside the

@@ -1,12 +1,12 @@
-# Running Atelier locally
+# Running Journeyman locally
 
 Three services. Start them in any order; the frontend degrades gracefully if the
 others are missing rather than erroring.
 
 | Service | Port | What it is | Needed for |
 |---|---|---|---|
-| **Frontend** | `5173`/`5174` | Atelier — React + Vite | everything |
-| **Atelier backend** | `8787` | Express — AI writers, gasless relay, uploads, messages | cover letters, file upload, chat |
+| **Frontend** | `5173`/`5174` | Journeyman — React + Vite | everything |
+| **Journeyman backend** | `8787` | Express — AI writers, gasless relay, uploads, messages | cover letters, file upload, chat |
 | **Agent daemon** | `8080` | Autopilot's brain — runs 24/7, holds keys, and long-polls [@The_Atelierbot](https://t.me/The_Atelierbot) | decision log, Autopilot mode, Telegram |
 
 ## First time
@@ -26,7 +26,7 @@ Then two edits, because both backends default to port 8787:
 # agent/daemon/.env
 PORT=8080
 
-# app/.env — point Atelier at the daemon
+# app/.env — point Journeyman at the daemon
 VITE_AGENT_API_URL=http://localhost:8080
 ```
 
@@ -87,7 +87,7 @@ Every seeded reasoning is prefixed `[LOCAL DEMO]`. It is for looking at the UI,
 
 | Works | Where |
 |---|---|
-| The whole existing Atelier app | everywhere — nothing was removed |
+| The whole existing Journeyman app | everywhere — nothing was removed |
 | Post a Job → mode chooser | `/post` |
 | Autopilot compose, with validation | `/post/autopilot` |
 | Decision log, live from the daemon | `/dev`, or inside your own job on `/my-jobs` |

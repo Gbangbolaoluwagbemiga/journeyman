@@ -21,9 +21,9 @@ const readContract = vi.fn();
 const kv = new Map<string, string>();
 
 vi.mock("../src/agent/BriefGenerator.js", () => ({ generateBrief }));
-vi.mock("../src/web3/atelier.js", () => ({ getPublicClient: () => ({ readContract }) }));
+vi.mock("../src/web3/journeyman.js", () => ({ getPublicClient: () => ({ readContract }) }));
 vi.mock("../src/config.js", () => ({
-  config: { atelierAddress: "0x00000000000000000000000000000000000A7E11", applicationWindowMinutes: 3 },
+  config: { journeymanAddress: "0x00000000000000000000000000000000000A7E11", applicationWindowMinutes: 3 },
 }));
 vi.mock("../src/store.js", () => ({
   getPollerText: (k: string) => kv.get(k) ?? null,

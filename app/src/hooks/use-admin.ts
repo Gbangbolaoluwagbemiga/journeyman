@@ -1,13 +1,13 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useWriteContract } from "wagmi";
 import { CONTRACTS } from "@/lib/web3/config";
-import AtelierABI from "@/lib/web3/AtelierABI.json";
+import JourneymanABI from "@/lib/web3/JourneymanABI.json";
 import { toast } from "@/hooks/use-toast";
 import { useWeb3 } from "@/contexts/web3-context";
 
 function contractAddr() {
-  const addr = CONTRACTS.ATELIER_ESCROW;
-  if (!addr) throw new Error("VITE_ATELIER_CONTRACT_ADDRESS is not set");
+  const addr = CONTRACTS.JOURNEYMAN_ESCROW;
+  if (!addr) throw new Error("VITE_JOURNEYMAN_CONTRACT_ADDRESS is not set");
   return addr as `0x${string}`;
 }
 
@@ -21,7 +21,7 @@ export function usePauseJobCreation() {
       if (!wallet.address) throw new Error("Wallet not connected");
       return writeContractAsync({
         address: contractAddr(),
-        abi: AtelierABI.abi,
+        abi: JourneymanABI.abi,
         functionName: "pause",
         args: [],
       });
@@ -46,7 +46,7 @@ export function useUnpauseJobCreation() {
       if (!wallet.address) throw new Error("Wallet not connected");
       return writeContractAsync({
         address: contractAddr(),
-        abi: AtelierABI.abi,
+        abi: JourneymanABI.abi,
         functionName: "unpause",
         args: [],
       });
@@ -71,7 +71,7 @@ export function useSetPlatformFee() {
       if (!wallet.address) throw new Error("Wallet not connected");
       return writeContractAsync({
         address: contractAddr(),
-        abi: AtelierABI.abi,
+        abi: JourneymanABI.abi,
         functionName: "setPlatformFee",
         args: [BigInt(feeBP)],
       });
@@ -96,7 +96,7 @@ export function useSetFeeCollector() {
       if (!wallet.address) throw new Error("Wallet not connected");
       return writeContractAsync({
         address: contractAddr(),
-        abi: AtelierABI.abi,
+        abi: JourneymanABI.abi,
         functionName: "setFeeCollector",
         args: [feeCollector as `0x${string}`],
       });
@@ -121,7 +121,7 @@ export function useWhitelistToken() {
       if (!wallet.address) throw new Error("Wallet not connected");
       return writeContractAsync({
         address: contractAddr(),
-        abi: AtelierABI.abi,
+        abi: JourneymanABI.abi,
         functionName: "whitelistToken",
         args: [token as `0x${string}`],
       });
@@ -146,7 +146,7 @@ export function useAuthorizeArbiter() {
       if (!wallet.address) throw new Error("Wallet not connected");
       return writeContractAsync({
         address: contractAddr(),
-        abi: AtelierABI.abi,
+        abi: JourneymanABI.abi,
         functionName: "authorizeArbiter",
         args: [arbiter as `0x${string}`],
       });
@@ -172,7 +172,7 @@ export function useWithdrawFees() {
       const zeroAddress = "0x0000000000000000000000000000000000000000";
       return writeContractAsync({
         address: contractAddr(),
-        abi: AtelierABI.abi,
+        abi: JourneymanABI.abi,
         functionName: "withdrawFees",
         args: [(token || zeroAddress) as `0x${string}`],
       });

@@ -32,12 +32,12 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { useWeb3 } from "@/contexts/web3-context";
 import { useManagedWorker } from "@/hooks/use-managed-worker";
-import { commission } from "@/lib/atelier/worker";
+import { commission } from "@/lib/journeyman/worker";
 import { useWriteContract } from "wagmi";
 import { useCreateEscrow } from "@/hooks/use-escrows";
 import { contractService } from "@/lib/web3/contract-service";
-import { toastError } from "@/lib/atelier/errors";
-import { CATEGORIES, categoryMarker, type CategoryId } from "@/lib/atelier/categories";
+import { toastError } from "@/lib/journeyman/errors";
+import { CATEGORIES, categoryMarker, type CategoryId } from "@/lib/journeyman/categories";
 import {
   AUTOPILOT_CONFIGURED,
   fetchAutopilotAddress,
@@ -47,7 +47,7 @@ import {
   type AgentLimits,
   type AutopilotBrief,
   type WhitelistedToken,
-} from "@/lib/atelier/agent-api";
+} from "@/lib/journeyman/agent-api";
 
 const EXAMPLES = [
   "A logo for a coffee roastery. Budget $50, 3 days.",
@@ -68,7 +68,7 @@ export default function AutopilotComposePage() {
      than assumed: the contract rejects anything not whitelisted, and an admin
      can delist one between page loads. */
   /* What kind of work this is. Written into the description as a marker the
-     subgraph lifts into a queryable field — see lib/atelier/categories.ts. */
+     subgraph lifts into a queryable field — see lib/journeyman/categories.ts. */
   const [category, setCategory] = useState<CategoryId>("design");
   const [limits, setLimits] = useState<AgentLimits | null>(null);
   const [tokens, setTokens] = useState<WhitelistedToken[] | null>(null);
@@ -339,7 +339,7 @@ export default function AutopilotComposePage() {
           <Link to="/get-hired" className="text-foreground underline underline-offset-4">
             Get an account
           </Link>{" "}
-          — Atelier holds one for you, and you can post from it too.
+          — Journeyman holds one for you, and you can post from it too.
         </p>
         <div className="flex flex-col sm:flex-row gap-3 justify-center mt-8">
           <Button asChild variant="outline">

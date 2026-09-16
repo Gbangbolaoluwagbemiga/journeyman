@@ -79,11 +79,11 @@ export function DelegationProvider({ children }: { children: ReactNode }) {
       /* Renamed from "secureflow_delegations". Read the old key once and carry
          it over — a rename that silently orphans someone's stored delegations
          is a data loss dressed up as a branding change. */
-      let stored = localStorage.getItem("atelier_delegations");
+      let stored = localStorage.getItem("journeyman_delegations");
       if (!stored) {
         const legacy = localStorage.getItem("secureflow_delegations");
         if (legacy) {
-          localStorage.setItem("atelier_delegations", legacy);
+          localStorage.setItem("journeyman_delegations", legacy);
           localStorage.removeItem("secureflow_delegations");
           stored = legacy;
         }
@@ -98,7 +98,7 @@ export function DelegationProvider({ children }: { children: ReactNode }) {
   const saveDelegations = (newDelegations: Delegation[]) => {
     setDelegations(newDelegations);
     localStorage.setItem(
-      "atelier_delegations",
+      "journeyman_delegations",
       JSON.stringify(newDelegations),
     );
   };
@@ -201,7 +201,7 @@ export function DelegationProvider({ children }: { children: ReactNode }) {
       }
 
       // Get contract instance
-      const contract = getContract(CONTRACTS.ATELIER_ESCROW);
+      const contract = getContract(CONTRACTS.JOURNEYMAN_ESCROW);
       if (!contract) {
         throw new Error("Contract not available");
       }

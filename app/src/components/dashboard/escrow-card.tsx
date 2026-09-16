@@ -22,16 +22,16 @@ import { useToast } from "@/hooks/use-toast";
 import { isApiConfigured } from "@/lib/api";
 import type { Escrow } from "@/lib/web3/types";
 import { encodeJobId } from "@/lib/id-codec";
-import { AutopilotControl } from "@/components/atelier/autopilot-control";
+import { AutopilotControl } from "@/components/journeyman/autopilot-control";
 import { useJobManager } from "@/hooks/use-job-manager";
-import { daysUntil, describeDaysLeft } from "@/lib/atelier/deadline";
-import { JobDecisionLog } from "@/components/atelier/job-decision-log";
-import { PostDisputeChoice } from "@/components/atelier/post-dispute-choice";
-import { YieldOptIn } from "@/components/atelier/yield-opt-in";
-import { DeclinedChoice } from "@/components/atelier/declined-choice";
-import { WaitingOnFreelancer } from "@/components/atelier/waiting-on-freelancer";
-import { AssigneeChip } from "@/components/atelier/assignee-chip";
-import { ApplicantScores } from "@/components/atelier/applicant-scores";
+import { daysUntil, describeDaysLeft } from "@/lib/journeyman/deadline";
+import { JobDecisionLog } from "@/components/journeyman/job-decision-log";
+import { PostDisputeChoice } from "@/components/journeyman/post-dispute-choice";
+import { YieldOptIn } from "@/components/journeyman/yield-opt-in";
+import { DeclinedChoice } from "@/components/journeyman/declined-choice";
+import { WaitingOnFreelancer } from "@/components/journeyman/waiting-on-freelancer";
+import { AssigneeChip } from "@/components/journeyman/assignee-chip";
+import { ApplicantScores } from "@/components/journeyman/applicant-scores";
 
 
 interface EscrowCardProps {

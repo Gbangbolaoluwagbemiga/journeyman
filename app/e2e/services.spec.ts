@@ -3,7 +3,7 @@ import { test, expect, request } from "@playwright/test";
 /**
  * THE SERVICES, DIRECTLY.
  *
- * Atelier runs on two backends — the Express API and the Autopilot daemon —
+ * Journeyman runs on two backends — the Express API and the Autopilot daemon —
  * and the frontend talks to both. These check each one is actually up and
  * answering the shapes the app encodes against, so a failure here says "the
  * daemon is down" rather than making a UI test lie about why it failed.
@@ -36,7 +36,7 @@ test.describe("the Express API", () => {
 });
 
 test.describe("Patron daemon", () => {
-  test("serves the endpoints Atelier reads", async () => {
+  test("serves the endpoints Journeyman reads", async () => {
     const api = await request.newContext();
     for (const path of ["/api/tasks", "/api/decisions", "/api/wallet"]) {
       const res = await api.get(`${DAEMON}${path}`);
@@ -62,7 +62,7 @@ test.describe("Patron daemon", () => {
     const api = await request.newContext();
     const wallet = await (await api.get(`${DAEMON}/api/wallet`)).json();
 
-    // Atelier appoints THIS address as the on-chain job manager. If it is
+    // Journeyman appoints THIS address as the on-chain job manager. If it is
     // malformed, setJobManager either reverts or delegates to nowhere.
     expect(wallet.address).toMatch(/^0x[a-fA-F0-9]{40}$/);
   });
@@ -77,7 +77,7 @@ test.describe("Patron daemon", () => {
     if (decisions.length === 0) {
       test.skip(true, "no decisions seeded — run scripts/seed-local-demo.mjs");
     }
-    // isDecisionRow in lib/atelier/patron.ts requires exactly these three.
+    // isDecisionRow in lib/journeyman/patron.ts requires exactly these three.
     for (const d of decisions) {
       expect(typeof d.id).toBe("string");
       expect(typeof d.type).toBe("string");
@@ -87,7 +87,7 @@ test.describe("Patron daemon", () => {
   });
 
   /**
-   * The join Atelier does to scope a log to one job. If tasks ever stop
+   * The join Journeyman does to scope a log to one job. If tasks ever stop
    * carrying escrowId, every per-job decision log silently empties and the app
    * shows manual jobs where Autopilot ones are.
    */

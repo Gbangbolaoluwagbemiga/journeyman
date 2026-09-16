@@ -81,7 +81,7 @@ evidenceRouter.post("/upload", upload.single("file"), async (req, res) => {
 
   // Pinata metadata – stored alongside the file, queryable later
   const metadata = JSON.stringify({
-    name: `atelier-evidence-${escrowId}-${milestoneIndex}-${Date.now()}`,
+    name: `journeyman-evidence-${escrowId}-${milestoneIndex}-${Date.now()}`,
     keyvalues: {
       escrowId,
       milestoneIndex,

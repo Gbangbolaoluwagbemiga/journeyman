@@ -63,7 +63,7 @@ export function EvidenceSubmissionButton({
     setSubmitting(true);
     try {
       const { ContractService } = await import("@/lib/web3/contract-service");
-      const svc = new ContractService(CONTRACTS.ATELIER_ESCROW);
+      const svc = new ContractService(CONTRACTS.JOURNEYMAN_ESCROW);
 
       // Combine CID and description if description exists
       const fullCid = evidenceDescription 

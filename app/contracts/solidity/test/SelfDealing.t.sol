@@ -34,7 +34,7 @@ contract SelfDealingTest is JobManagerBase {
         descs[0] = "Only milestone";
 
         vm.prank(client);
-        vm.expectRevert(Atelier.SelfDealing.selector);
+        vm.expectRevert(Journeyman.SelfDealing.selector);
         sf.createEscrow(
             client, address(usdc), BUDGET, 30, arbiters, 1, amounts, descs, "Logo", "A logo"
         );
@@ -49,7 +49,7 @@ contract SelfDealingTest is JobManagerBase {
         _apply(escrowId, client);
 
         vm.prank(client);
-        vm.expectRevert(Atelier.SelfDealing.selector);
+        vm.expectRevert(Journeyman.SelfDealing.selector);
         sf.acceptFreelancer(escrowId, client);
     }
 
@@ -62,7 +62,7 @@ contract SelfDealingTest is JobManagerBase {
         _apply(escrowId, client);
 
         vm.prank(manager);
-        vm.expectRevert(Atelier.SelfDealing.selector);
+        vm.expectRevert(Journeyman.SelfDealing.selector);
         sf.acceptFreelancer(escrowId, client);
     }
 
@@ -86,7 +86,7 @@ contract SelfDealingTest is JobManagerBase {
         _apply(escrowId, manager);
 
         vm.prank(manager);
-        vm.expectRevert(Atelier.ManagerCannotSelfHire.selector);
+        vm.expectRevert(Journeyman.ManagerCannotSelfHire.selector);
         sf.acceptFreelancer(escrowId, manager);
     }
 }

@@ -26,7 +26,7 @@ vi.mock("@/lib/web3/contract-service", () => ({
   ContractService: class { cancelJob = cancelJob; },
 }));
 
-const { WaitingOnFreelancer } = await import("@/components/atelier/waiting-on-freelancer");
+const { WaitingOnFreelancer } = await import("@/components/journeyman/waiting-on-freelancer");
 
 const WORKER = "0xfC3642978a1a46ff751ee259906E07ddD7d43Bd1";
 const ZERO = "0x0000000000000000000000000000000000000000";

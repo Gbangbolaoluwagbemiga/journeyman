@@ -3,7 +3,7 @@ pragma solidity ^0.8.20;
 
 import "./JobManagerBase.t.sol";
 import "./MockYieldAdapter.t.sol";
-import "../src/yield/AtelierYield.sol";
+import "../src/yield/JourneymanYield.sol";
 
 /**
  * Handler: a live escrow with yield enabled, and a venue the fuzzer can break
@@ -14,10 +14,10 @@ import "../src/yield/AtelierYield.sol";
  * path is not what a circuit breaker is for.
  */
 contract YieldHandler is Test {
-    Atelier public sf;
+    Journeyman public sf;
     MockUSDC public usdc;
     MockYieldAdapter public venue;
-    AtelierYield public yield_;
+    JourneymanYield public yield_;
 
     address public client;
     address public worker;
@@ -27,7 +27,7 @@ contract YieldHandler is Test {
     uint256 public constant BUDGET = 900e6;
 
     constructor(
-        Atelier _sf, MockUSDC _usdc, MockYieldAdapter _venue, AtelierYield _yield,
+        Journeyman _sf, MockUSDC _usdc, MockYieldAdapter _venue, JourneymanYield _yield,
         address _client, address _worker, address _arbiter, uint256 _escrowId
     ) {
         sf = _sf; usdc = _usdc; venue = _venue; yield_ = _yield;
@@ -92,7 +92,7 @@ contract YieldHandler is Test {
  * breaks, a freelancer somewhere cannot be paid because a pool was busy.
  */
 contract ProductiveEscrowInvariantTest is JobManagerBase {
-    AtelierYield internal yield_;
+    JourneymanYield internal yield_;
     MockYieldAdapter internal venue;
     YieldHandler internal handler;
     uint256 internal jobId;
@@ -101,9 +101,9 @@ contract ProductiveEscrowInvariantTest is JobManagerBase {
         super.setUp();
 
         /* The yield layer is a companion contract now — it was 1.6KB of why
-           Atelier could not be deployed at all. Same behaviour, wired through
+           Journeyman could not be deployed at all. Same behaviour, wired through
            the escrow's single controller pointer. */
-        yield_ = new AtelierYield(address(sf));
+        yield_ = new JourneymanYield(address(sf));
         venue = new MockYieldAdapter(address(usdc), address(yield_));
         yield_.setYieldAdapter(address(usdc), address(venue));
         // The shipped default, so the fuzzer attacks what production runs.
@@ -142,7 +142,7 @@ contract ProductiveEscrowInvariantTest is JobManagerBase {
      * In plain terms: a dead venue can DELAY a payout. It cannot lose the
      * money, and it cannot leave the contract owing more than it holds a claim
      * on. That distinction is the whole feature, and the delay is documented in
-     * Atelier.sol rather than hidden behind the word "always".
+     * Journeyman.sol rather than hidden behind the word "always".
      */
     function invariant_contractCanAlwaysCoverWhatItOwes() public view {
         uint256 claimable =
@@ -160,10 +160,10 @@ contract ProductiveEscrowInvariantTest is JobManagerBase {
      * than by this one.
      */
     function invariant_deployedNeverExceedsWhatIsHeld() public view {
-        Atelier.Escrow memory esc = sf.getEscrow(jobId);
+        Journeyman.Escrow memory esc = sf.getEscrow(jobId);
         if (
-            esc.status != Atelier.EscrowStatus.Pending &&
-            esc.status != Atelier.EscrowStatus.InProgress
+            esc.status != Journeyman.EscrowStatus.Pending &&
+            esc.status != Journeyman.EscrowStatus.InProgress
         ) return;
 
         assertLe(
@@ -183,10 +183,10 @@ contract ProductiveEscrowInvariantTest is JobManagerBase {
         handler.submit(0);
         handler.approve(0);
 
-        Atelier.Milestone[] memory ms = sf.getMilestones(jobId);
+        Journeyman.Milestone[] memory ms = sf.getMilestones(jobId);
         uint256 largest;
         for (uint256 i; i < ms.length; ++i) {
-            if (ms[i].status == Atelier.MilestoneStatus.Approved) continue;
+            if (ms[i].status == Journeyman.MilestoneStatus.Approved) continue;
             if (ms[i].amount > largest) largest = ms[i].amount;
         }
 

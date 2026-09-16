@@ -1,5 +1,5 @@
 /**
- * Answering a question about Atelier.
+ * Answering a question about Journeyman.
  *
  * The context block is what makes this more than a brochure. Somebody asking
  * "why can't I send the next stage" wants an answer about THEIR job, and the
@@ -8,7 +8,7 @@
  * caller has already proven — never from anything they merely claimed.
  */
 import { groqChat, type ChatTurn } from "../groq/chat.js";
-import { ASSISTANT_RULES, ATELIER_KNOWLEDGE } from "./knowledge.js";
+import { ASSISTANT_RULES, JOURNEYMAN_KNOWLEDGE } from "./knowledge.js";
 
 export interface Viewer {
   /** "client", "freelancer", "both" or null for somebody just looking. */
@@ -29,9 +29,9 @@ function describeViewer(v: Viewer | undefined): string {
   if (!v) return "You know nothing about this person. Assume they are new.";
 
   const bits: string[] = [];
-  if (v.role === "client") bits.push("They hire on Atelier.");
-  else if (v.role === "freelancer") bits.push("They take work on Atelier.");
-  else if (v.role === "both") bits.push("They both hire and take work on Atelier.");
+  if (v.role === "client") bits.push("They hire on Journeyman.");
+  else if (v.role === "freelancer") bits.push("They take work on Journeyman.");
+  else if (v.role === "both") bits.push("They both hire and take work on Journeyman.");
   else bits.push("They have no account yet — treat them as new.");
 
   if (v.hiring) bits.push(`They currently have ${v.hiring} job(s) they are hiring for.`);
@@ -43,7 +43,7 @@ function describeViewer(v: Viewer | undefined): string {
   return bits.join(" ");
 }
 
-export async function askAtelier(
+export async function askJourneyman(
   turns: ChatTurn[],
   viewer?: Viewer,
 ): Promise<string> {
@@ -62,8 +62,8 @@ export async function askAtelier(
   const system = [
     ASSISTANT_RULES,
     "",
-    "--- WHAT YOU KNOW ABOUT ATELIER ---",
-    ATELIER_KNOWLEDGE,
+    "--- WHAT YOU KNOW ABOUT JOURNEYMAN ---",
+    JOURNEYMAN_KNOWLEDGE,
     "",
     "--- WHO YOU ARE TALKING TO ---",
     describeViewer(viewer),

@@ -21,7 +21,7 @@ but the bell stays silent and chat is unavailable until you do the below.
 
 | Field | What to put |
 |---|---|
-| Name | `atelier` |
+| Name | `journeyman` |
 | Database password | Generate one. You will not need it again — the API uses keys, not the password. Save it anyway |
 | Region | Whichever is closest to your Railway region |
 | Plan | Free is fine |
@@ -102,7 +102,7 @@ same sitting.
 
 ## 4. Set them on Railway
 
-<https://railway.app> → your Atelier service → **Variables**
+<https://railway.app> → your Journeyman service → **Variables**
 
 ```
 SUPABASE_URL=https://<ref>.supabase.co
@@ -118,7 +118,7 @@ Nothing on Vercel changes — the frontend never talks to Supabase directly.
 ## 5. Check it actually worked
 
 ```bash
-curl -s https://atelier-production-be62.up.railway.app/health
+curl -s https://journeyman-production-be62.up.railway.app/health
 ```
 
 Want: `{"ok":true,"groq":true,"supabase":true}`
@@ -131,7 +131,7 @@ Then, with your API secret:
 
 ```bash
 curl -s -H "Authorization: Bearer $API_SECRET" \
-  "https://atelier-production-be62.up.railway.app/v1/notifications?wallet=0xYourAddress"
+  "https://journeyman-production-be62.up.railway.app/v1/notifications?wallet=0xYourAddress"
 ```
 
 Want: `{"notifications":[]}` — an empty list with **no** `degraded` flag.

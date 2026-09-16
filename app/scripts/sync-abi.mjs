@@ -22,16 +22,16 @@ import { fileURLToPath } from "node:url";
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, "..");
 
-const ARTIFACT = resolve(root, "contracts/solidity/out/Atelier.sol/Atelier.json");
-const FULL = resolve(root, "src/lib/web3/AtelierABI.json");
-const BARE = resolve(root, "src/lib/web3/atelier-abi.json");
+const ARTIFACT = resolve(root, "contracts/solidity/out/Journeyman.sol/Journeyman.json");
+const FULL = resolve(root, "src/lib/web3/JourneymanABI.json");
+const BARE = resolve(root, "src/lib/web3/journeyman-abi.json");
 /*
  * The daemon keeps its own copy and this script did not touch it, so the two
  * drifted silently: the frontend learned about a new function and the agent did
  * not. Nothing fails loudly when that happens — a call just encodes against an
  * ABI missing the entry it needs.
  */
-const DAEMON = resolve(root, "../agent/daemon/src/web3/AtelierABI.json");
+const DAEMON = resolve(root, "../agent/daemon/src/web3/JourneymanABI.json");
 
 if (!existsSync(ARTIFACT)) {
   console.error(

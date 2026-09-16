@@ -36,7 +36,7 @@ contract JobManagerTest is JobManagerBase {
         uint256 id = _createOpenJob();
 
         vm.prank(outsider);
-        vm.expectRevert(Atelier.Unauthorized.selector);
+        vm.expectRevert(Journeyman.Unauthorized.selector);
         sf.setJobManager(id, manager);
 
         // Not even the manager may re-appoint itself, which would otherwise let
@@ -45,7 +45,7 @@ contract JobManagerTest is JobManagerBase {
         sf.setJobManager(id, manager);
 
         vm.prank(manager);
-        vm.expectRevert(Atelier.Unauthorized.selector);
+        vm.expectRevert(Journeyman.Unauthorized.selector);
         sf.setJobManager(id, outsider);
     }
 
@@ -55,7 +55,7 @@ contract JobManagerTest is JobManagerBase {
         sf.setJobManager(id, manager);
 
         vm.prank(manager);
-        vm.expectRevert(Atelier.Unauthorized.selector);
+        vm.expectRevert(Journeyman.Unauthorized.selector);
         sf.revokeJobManager(id);
     }
 
@@ -63,18 +63,18 @@ contract JobManagerTest is JobManagerBase {
         uint256 id = _createOpenJob();
 
         vm.prank(client);
-        vm.expectRevert(Atelier.InvalidAddress.selector);
+        vm.expectRevert(Journeyman.InvalidAddress.selector);
         sf.setJobManager(id, address(0));
 
         vm.prank(client);
-        vm.expectRevert(Atelier.InvalidAddress.selector);
+        vm.expectRevert(Journeyman.InvalidAddress.selector);
         sf.setJobManager(id, client);
     }
 
     function test_revokingWhenNoneSetReverts() public {
         uint256 id = _createOpenJob();
         vm.prank(client);
-        vm.expectRevert(Atelier.NoManagerSet.selector);
+        vm.expectRevert(Journeyman.NoManagerSet.selector);
         sf.revokeJobManager(id);
     }
 
@@ -87,7 +87,7 @@ contract JobManagerTest is JobManagerBase {
         sf.acceptFreelancer(id, worker);
 
         vm.prank(client);
-        vm.expectRevert(Atelier.ManagerCannotBeBeneficiary.selector);
+        vm.expectRevert(Journeyman.ManagerCannotBeBeneficiary.selector);
         sf.setJobManager(id, worker);
     }
 
@@ -103,7 +103,7 @@ contract JobManagerTest is JobManagerBase {
         _apply(id, manager);
 
         vm.prank(manager);
-        vm.expectRevert(Atelier.ManagerCannotSelfHire.selector);
+        vm.expectRevert(Journeyman.ManagerCannotSelfHire.selector);
         sf.acceptFreelancer(id, manager);
     }
 
@@ -121,7 +121,7 @@ contract JobManagerTest is JobManagerBase {
         _apply(id, manager);
 
         vm.prank(client);
-        vm.expectRevert(Atelier.ManagerCannotSelfHire.selector);
+        vm.expectRevert(Journeyman.ManagerCannotSelfHire.selector);
         sf.acceptFreelancer(id, manager);
     }
 
@@ -187,7 +187,7 @@ contract JobManagerTest is JobManagerBase {
 
         // Escalation freezes the job to the manager, exactly as a client's would.
         vm.prank(manager);
-        vm.expectRevert(Atelier.EscrowNotActive.selector);
+        vm.expectRevert(Journeyman.EscrowNotActive.selector);
         sf.approveMilestone(id, 0);
     }
 
@@ -195,7 +195,7 @@ contract JobManagerTest is JobManagerBase {
         uint256 id = _liveAutopilotJob();
 
         vm.prank(manager);
-        vm.expectRevert(Atelier.Unauthorized.selector);
+        vm.expectRevert(Journeyman.Unauthorized.selector);
         sf.extendDeadline(id, 5);
     }
 
@@ -205,7 +205,7 @@ contract JobManagerTest is JobManagerBase {
         sf.setJobManager(id, manager);
 
         vm.prank(manager);
-        vm.expectRevert(Atelier.Unauthorized.selector);
+        vm.expectRevert(Journeyman.Unauthorized.selector);
         sf.cancelJob(id);
     }
 
@@ -215,11 +215,11 @@ contract JobManagerTest is JobManagerBase {
         sf.setJobManager(id, manager);
 
         vm.prank(manager);
-        vm.expectRevert(Atelier.Unauthorized.selector);
+        vm.expectRevert(Journeyman.Unauthorized.selector);
         sf.withdrawJobFunds(id, 10e6, 0);
 
         vm.prank(manager);
-        vm.expectRevert(Atelier.Unauthorized.selector);
+        vm.expectRevert(Journeyman.Unauthorized.selector);
         sf.addJobFunds(id, 10e6, 0);
 
         // Every surface that can move a job's total, not just the one that
@@ -229,7 +229,7 @@ contract JobManagerTest is JobManagerBase {
         string[] memory reqs = new string[](1);
         reqs[0] = "manager tries to rewrite the job";
         vm.prank(manager);
-        vm.expectRevert(Atelier.Unauthorized.selector);
+        vm.expectRevert(Journeyman.Unauthorized.selector);
         sf.setMilestones(id, amounts, reqs);
     }
 
@@ -243,7 +243,7 @@ contract JobManagerTest is JobManagerBase {
         sf.revokeJobManager(id);
 
         vm.prank(manager);
-        vm.expectRevert(Atelier.Unauthorized.selector);
+        vm.expectRevert(Journeyman.Unauthorized.selector);
         sf.approveMilestone(id, 0);
 
         // And the client can still finish the job themselves.
@@ -268,7 +268,7 @@ contract JobManagerTest is JobManagerBase {
         _submit(other, 0);
 
         vm.prank(manager);
-        vm.expectRevert(Atelier.Unauthorized.selector);
+        vm.expectRevert(Journeyman.Unauthorized.selector);
         sf.approveMilestone(other, 0);
 
         // Still fine on the job it actually manages.
@@ -342,7 +342,7 @@ contract JobManagerTest is JobManagerBase {
          * one a client is relying on.
          */
         vm.prank(manager);
-        vm.expectRevert(Atelier.EscrowNotActive.selector);
+        vm.expectRevert(Journeyman.EscrowNotActive.selector);
         sf.approveMilestone(id, 0);
 
         assertEq(usdc.balanceOf(manager), 0, "manager gained nothing");
@@ -355,11 +355,11 @@ contract JobManagerTest is JobManagerBase {
         _submit(id, 0);
 
         vm.startPrank(outsider);
-        vm.expectRevert(Atelier.Unauthorized.selector);
+        vm.expectRevert(Journeyman.Unauthorized.selector);
         sf.approveMilestone(id, 0);
-        vm.expectRevert(Atelier.Unauthorized.selector);
+        vm.expectRevert(Journeyman.Unauthorized.selector);
         sf.rejectMilestone(id, 0, "no");
-        vm.expectRevert(Atelier.Unauthorized.selector);
+        vm.expectRevert(Journeyman.Unauthorized.selector);
         sf.setJobManager(id, outsider);
         vm.stopPrank();
     }

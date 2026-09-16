@@ -35,7 +35,7 @@ vi.mock("@/lib/web3/contract-service", () => ({
   },
 }));
 
-const { YieldOptIn } = await import("@/components/atelier/yield-opt-in");
+const { YieldOptIn } = await import("@/components/journeyman/yield-opt-in");
 const { YieldChoice } = await import("@/components/create/yield-choice");
 
 const EARNING = {

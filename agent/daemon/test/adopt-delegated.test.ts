@@ -30,7 +30,7 @@ const deleteTask = vi.fn();
 const listTasks = vi.fn(() => [] as any[]);
 const generateBrief = vi.fn();
 
-vi.mock("../src/web3/atelier.js", () => ({
+vi.mock("../src/web3/journeyman.js", () => ({
   /* Reads and logs go to different endpoints now — drpc answers reads and caps
      a log range under 200 blocks; the Arc RPC is the only one that will walk a
      real range. Same fakes behind both here: this suite is about what the sweep
@@ -54,8 +54,8 @@ vi.mock("../src/store.js", () => ({
 vi.mock("../src/agent/BriefGenerator.js", () => ({ generateBrief }));
 vi.mock("../src/config.js", () => ({
   config: {
-    atelierAddress: "0x00000000000000000000000000000000000A7E11",
-    atelierDeployBlock: 0n,
+    journeymanAddress: "0x00000000000000000000000000000000000A7E11",
+    journeymanDeployBlock: 0n,
     logRangeLimit: 50n,
   },
 }));

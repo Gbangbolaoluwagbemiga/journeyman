@@ -162,7 +162,7 @@ async function fetchImage(url: string): Promise<FetchResult> {
     const res = await fetch(url, {
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
       redirect: "follow",
-      headers: { "User-Agent": `AtelierBot/1.0 (+${config.publicAppUrl})` },
+      headers: { "User-Agent": `JourneymanBot/1.0 (+${config.publicAppUrl})` },
     });
     if (!res.ok) return { error: `the link returned ${res.status}` };
 

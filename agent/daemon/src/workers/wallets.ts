@@ -3,13 +3,13 @@
 // The promise of managed mode is that a designer, a copywriter, a voice artist
 // can take a paid commission without installing anything or learning what a
 // chain is. That promise rests entirely on this file: the moment someone joins,
-// Atelier asks Circle for an MPC wallet in their name and writes one row.
+// Journeyman asks Circle for an MPC wallet in their name and writes one row.
 //
 // Custody, precisely — because a judge will ask:
 //   • The wallet is Circle MPC. The key exists only as split shares and is never
 //     assembled, so there is no export and no reveal. Not for them, not for us.
-//   • Atelier NEVER holds their money. When work is approved, the escrow contract
-//     pays their wallet directly. Atelier signs instructions; it is not a
+//   • Journeyman NEVER holds their money. When work is approved, the escrow contract
+//     pays their wallet directly. Journeyman signs instructions; it is not a
 //     custodian of funds.
 //   • The exit is a withdrawal to an address they control, not a key export.
 //
@@ -45,7 +45,7 @@ function client() {
 }
 
 /**
- * All worker wallets live in one wallet set, separate from Atelier's treasury
+ * All worker wallets live in one wallet set, separate from Journeyman's treasury
  * set. Created lazily on first signup and cached for the process — Circle has no
  * "get or create", and making a fresh set per worker would be both slow and a
  * mess to reason about later.
@@ -56,7 +56,7 @@ async function getWalletSetId(): Promise<string> {
     walletSetId = config.workerWalletSetId;
     return walletSetId;
   }
-  const res = (await client().createWalletSet({ name: "Atelier — worker wallets" })) as {
+  const res = (await client().createWalletSet({ name: "Journeyman — worker wallets" })) as {
     data?: { walletSet?: { id?: string } };
   };
   const id = res?.data?.walletSet?.id;

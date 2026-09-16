@@ -1,7 +1,7 @@
 // BriefGenerator — turns a raw instruction (from an AI agent via x402, or a human
 // via the UI) into an enforceable acceptance brief: explicit criteria, a milestone
 // split, and a keccak256 hash of the criteria that gets posted on-chain in
-// Atelier's `projectDescription` so the brief can't be silently altered later.
+// Journeyman's `projectDescription` so the brief can't be silently altered later.
 //
 // Structured outputs (zod schema validated on the way back out) replace the v1
 // regex `/\{[\s\S]*\}/` extraction — a malformed or truncated response now surfaces
@@ -91,7 +91,7 @@ const BriefSchema = z.object({
     ),
 });
 
-const SYSTEM_PROMPT = `You are Atelier's Brief Generator. Atelier is an autonomous service that hires
+const SYSTEM_PROMPT = `You are Journeyman's Brief Generator. Journeyman is an autonomous service that hires
 human freelancers on behalf of clients — AI agents paying per-request over x402, or humans
 through a web UI. Your job is to take a client's instruction and convert it into a precise,
 enforceable acceptance brief that a freelancer can be judged against and paid on.
@@ -257,8 +257,8 @@ export async function generateBrief(instruction: string): Promise<BriefGeneratio
     throw new Error(`Brief budget must be positive, got $${parsed.budget}`);
   }
 
-  // Hash the criteria for on-chain posting — embedded in Atelier's projectDescription
-  // so the brief Atelier reviews against can't be silently altered after the escrow is live.
+  // Hash the criteria for on-chain posting — embedded in Journeyman's projectDescription
+  // so the brief Journeyman reviews against can't be silently altered after the escrow is live.
   const criteriaJson = JSON.stringify(parsed.criteria);
   const briefHash = keccak256(toBytes(criteriaJson));
 

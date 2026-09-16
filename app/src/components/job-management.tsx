@@ -149,7 +149,7 @@ export function JobManagement({
     setIsSubmitting(true);
     try {
       const { ContractService } = await import("@/lib/web3/contract-service");
-      const cs = new ContractService(CONTRACTS.ATELIER_ESCROW);
+      const cs = new ContractService(CONTRACTS.JOURNEYMAN_ESCROW);
 
       toast({ title: "Adding funds…", description: "Confirm in your wallet." });
 
@@ -215,7 +215,7 @@ export function JobManagement({
     setIsSubmitting(true);
     try {
       const { ContractService } = await import("@/lib/web3/contract-service");
-      const cs = new ContractService(CONTRACTS.ATELIER_ESCROW);
+      const cs = new ContractService(CONTRACTS.JOURNEYMAN_ESCROW);
 
       toast({ title: "Withdrawing funds…", description: "Confirm in your wallet." });
 
@@ -255,7 +255,7 @@ export function JobManagement({
     setIsSubmitting(true);
     try {
       const { ContractService } = await import("@/lib/web3/contract-service");
-      const cs = new ContractService(CONTRACTS.ATELIER_ESCROW);
+      const cs = new ContractService(CONTRACTS.JOURNEYMAN_ESCROW);
 
       // Snapshot applicants BEFORE cancelling — once the job is cancelled the
       // escrow is gone, so this is the last chance to know who to notify.
@@ -317,7 +317,7 @@ export function JobManagement({
     void (async () => {
       try {
         const { ContractService } = await import("@/lib/web3/contract-service");
-        const ok = await new ContractService(CONTRACTS.ATELIER_ESCROW).supportsMilestoneEditing();
+        const ok = await new ContractService(CONTRACTS.JOURNEYMAN_ESCROW).supportsMilestoneEditing();
         if (!cancelled) setCanEdit(ok);
       } catch {
         /* Leave it hidden. A button that reverts is worse than one absent. */
@@ -357,7 +357,7 @@ export function JobManagement({
     setIsSubmitting(true);
     try {
       const { ContractService } = await import("@/lib/web3/contract-service");
-      const cs = new ContractService(CONTRACTS.ATELIER_ESCROW);
+      const cs = new ContractService(CONTRACTS.JOURNEYMAN_ESCROW);
 
       const hash = await cs.setMilestones(
         {

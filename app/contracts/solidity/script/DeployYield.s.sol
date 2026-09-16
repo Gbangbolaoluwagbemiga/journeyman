@@ -2,11 +2,11 @@
 pragma solidity ^0.8.20;
 
 import "forge-std/Script.sol";
-import "../src/Atelier.sol";
-import "../src/yield/AtelierYield.sol";
+import "../src/Journeyman.sol";
+import "../src/yield/JourneymanYield.sol";
 
 /**
- * Deploy the productive-escrow controller and attach it to a live Atelier.
+ * Deploy the productive-escrow controller and attach it to a live Journeyman.
  *
  *   PROXY_ADDRESS=0x… forge script script/DeployYield.s.sol \
  *     --rpc-url arc_testnet --broadcast
@@ -25,11 +25,11 @@ contract DeployYieldScript is Script {
         address payable proxy = payable(vm.envAddress("PROXY_ADDRESS"));
 
         vm.startBroadcast(pk);
-        AtelierYield controller = new AtelierYield(proxy);
-        Atelier(proxy).setYieldController(address(controller));
+        JourneymanYield controller = new JourneymanYield(proxy);
+        Journeyman(proxy).setYieldController(address(controller));
         vm.stopBroadcast();
 
-        console.log("AtelierYield:", address(controller));
+        console.log("JourneymanYield:", address(controller));
         console.log("attached to:", proxy);
         console.log("buffer bp:", controller.yieldBufferBP());
         console.log("venue set:", address(controller.yieldAdapter(address(0))));

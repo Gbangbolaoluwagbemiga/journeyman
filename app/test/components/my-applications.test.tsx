@@ -20,12 +20,12 @@ const fetchMyApplications = vi.fn();
 vi.mock("@/contexts/web3-context", () => ({
   useWeb3: () => ({ wallet: { address: "0xAAAA", isConnected: true } }),
 }));
-vi.mock("@/lib/atelier/applications", async (orig) => ({
+vi.mock("@/lib/journeyman/applications", async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
   fetchMyApplications,
 }));
 
-const { MyApplications } = await import("@/components/atelier/my-applications");
+const { MyApplications } = await import("@/components/journeyman/my-applications");
 
 function job(over: Record<string, unknown> = {}) {
   return {

@@ -8,11 +8,11 @@
 // Long-polling (getUpdates) rather than webhooks, deliberately: no public
 // callback URL, no second service, no inbound port. It runs inside the daemon
 // that is already deployed, needing nothing but a bot token — and if that token
-// is absent the bot simply doesn't start and the rest of Atelier is unaffected.
+// is absent the bot simply doesn't start and the rest of Journeyman is unaffected.
 
 import * as store from "../store.js";
 import * as workers from "./service.js";
-import * as atelier from "../web3/atelier.js";
+import * as journeyman from "../web3/journeyman.js";
 import { config } from "../config.js";
 import { llmPaused, llmPauseRemaining } from "../llm-status.js";
 
@@ -149,7 +149,7 @@ const WEB = config.publicAppUrl;
  * just a confusing one.
  */
 const HELP = [
-  "🎨 <b>Atelier</b> — an AI posts a job, locks the money before anyone applies, and pays you when your work is accepted.",
+  "🎨 <b>Journeyman</b> — an AI posts a job, locks the money before anyone applies, and pays you when your work is accepted.",
   "",
   "<b>Finding work</b>",
   "/jobs — everything open right now",
@@ -172,7 +172,7 @@ const HELP = [
   "",
   "<b>You</b>",
   "/profile — your handle, skills and rating",
-  "/skills &lt;text&gt; — tell Atelier what you do",
+  "/skills &lt;text&gt; — tell Journeyman what you do",
   "/link 0x… — use your own wallet instead of the one we made you",
   "",
   "<b>Seeing everything</b>",
@@ -421,7 +421,7 @@ async function handleText(msg: TgMessage) {
       await send(
         chatId,
         [
-          "🎨 <b>Atelier</b> — an AI posts a job, locks the money on-chain, and pays you when the work is accepted.",
+          "🎨 <b>Journeyman</b> — an AI posts a job, locks the money on-chain, and pays you when the work is accepted.",
           "",
           "No wallet to install. No crypto to learn. You'll be set up in about ten seconds.",
           "",
@@ -467,7 +467,7 @@ async function handleText(msg: TgMessage) {
       if (worker.mode === "own") {
         return void (await send(
           chatId,
-          [`You're using your own wallet:`, `<code>${worker.walletAddress}</code>`, "", "You hold the keys. Atelier only tells you when work appears."].join("\n"),
+          [`You're using your own wallet:`, `<code>${worker.walletAddress}</code>`, "", "You hold the keys. Journeyman only tells you when work appears."].join("\n"),
         ));
       }
       return void (await send(
@@ -512,7 +512,7 @@ async function handleText(msg: TgMessage) {
       let rating = "no ratings yet";
       try {
         if (worker.walletAddress) {
-          const r = await atelier.getAverageRating(worker.walletAddress as `0x${string}`);
+          const r = await journeyman.getAverageRating(worker.walletAddress as `0x${string}`);
           if (r.count > 0) rating = `${"★".repeat(Math.round(r.average))} ${r.average.toFixed(1)}/5 from ${r.count} job(s)`;
         }
       } catch {
@@ -525,7 +525,7 @@ async function handleText(msg: TgMessage) {
           `<b>${esc(worker.handle)}</b>`,
           `Joined ${joined} · ${worker.mode === "managed" ? "wallet managed for you" : "your own wallet"}`,
           "",
-          `<b>What you do:</b> ${esc(worker.skills) || "not set — /skills to tell Atelier"}`,
+          `<b>What you do:</b> ${esc(worker.skills) || "not set — /skills to tell Journeyman"}`,
           `<b>On-chain rating:</b> ${rating}`,
           "",
           "Your rating is written to the contract when a job completes, so it's verifiable by anyone and not something we can quietly change.",
@@ -575,7 +575,7 @@ async function handleText(msg: TgMessage) {
           [
             `💰 <b>$${Number(balance).toFixed(2)} USDC</b>`,
             "",
-            "This is already yours — it sits in your own wallet, not with Atelier.",
+            "This is already yours — it sits in your own wallet, not with Journeyman.",
             `<code>${address}</code>`,
             "",
             "/withdraw to move it to any address you control.",
@@ -820,7 +820,7 @@ async function handleText(msg: TgMessage) {
  * link to the viem docs. It told them nothing they could act on and looked
  * like the product had broken.
  *
- * Atelier's custom errors are the useful part, so they are translated. The
+ * Journeyman's custom errors are the useful part, so they are translated. The
  * hex selectors are matched directly because the revert reaches us as a raw
  * `execution reverted: 0x…` string rather than a decoded error.
  */

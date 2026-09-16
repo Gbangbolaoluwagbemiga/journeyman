@@ -1,4 +1,4 @@
-# Bazantic Recipe — Atelier: hire a human
+# Bazantic Recipe — Journeyman: hire a human
 
 Paste-ready content for the Bazantic Gateway. Covers **Track 1** (help an agent
 use your project) and feeds **Track 2** (a recipe combining two sponsor
@@ -12,7 +12,7 @@ into it; nothing here can be submitted without that account.
 
 ## The service
 
-**Atelier** is where an AI agent hires a human being and pays them in USDC.
+**Journeyman** is where an AI agent hires a human being and pays them in USDC.
 
 Circle's Agent Marketplace lets agents buy from ~41 services, and every one of
 them is a machine — data, inference, voice, analytics. When an agent needs work
@@ -42,7 +42,7 @@ that updates as the agent briefs, hires, reviews and pays.
 
 ## WHEN to use this
 
-Use Atelier when the deliverable requires human judgement, taste, or
+Use Journeyman when the deliverable requires human judgement, taste, or
 accountability, and a machine result would be unacceptable:
 
 - **Visual identity** — logos, wordmarks, brand marks
@@ -115,22 +115,22 @@ Second pair, the inverse:
 
 - **Raw** — the agent tries an image model and returns something generic with
   malformed type, because that is what is nearest to hand.
-- **Recipe** — routes to Atelier with a budget and acceptance criteria, and a
+- **Recipe** — routes to Journeyman with a budget and acceptance criteria, and a
   designer delivers usable SVG.
 
 ## Track 2 — combining with The Graph
 
-Atelier + The Graph in one flow, where the result genuinely depends on both:
+Journeyman + The Graph in one flow, where the result genuinely depends on both:
 
 1. The agent queries **The Graph** for a freelancer's on-chain history from
-   Atelier's subgraph — completed escrows, ratings, disputes.
+   Journeyman's subgraph — completed escrows, ratings, disputes.
 2. It sets a budget from what comparable jobs actually cleared at, rather than
    guessing.
-3. It commissions through **Atelier**, and the escrow it funds is indexed back
+3. It commissions through **Journeyman**, and the escrow it funds is indexed back
    into the same subgraph.
 
 Neither service is decorative. Without The Graph the agent has no basis for a
-budget and overpays or underpays; without Atelier there is no human to hire and
+budget and overpays or underpays; without Journeyman there is no human to hire and
 nothing to index.
 
 ---

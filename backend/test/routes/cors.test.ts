@@ -15,7 +15,7 @@ import request from "supertest";
  */
 
 const ALLOWED = "https://atelier-job.vercel.app";
-const PREVIEW = "https://atelier-job-git-feature.vercel.app";
+const PREVIEW = "https://journeyman-job-git-feature.vercel.app";
 const STRANGER = "https://not-ours.example.com";
 
 async function appWith(env: Record<string, string | undefined>) {
@@ -72,7 +72,7 @@ describe("with an allow-list configured", () => {
   it("allows preview deployments through the pattern", async () => {
     const app = await appWith({
       FRONTEND_URL: ALLOWED,
-      FRONTEND_URL_PATTERN: "^https://atelier-job.*\\.vercel\\.app$",
+      FRONTEND_URL_PATTERN: "^https://journeyman-job.*\\.vercel\\.app$",
     });
     const res = await request(app).get("/health").set("Origin", PREVIEW);
     expect(res.headers["access-control-allow-origin"]).toBe(PREVIEW);
@@ -81,7 +81,7 @@ describe("with an allow-list configured", () => {
   it("still refuses a stranger that the pattern does not match", async () => {
     const app = await appWith({
       FRONTEND_URL: ALLOWED,
-      FRONTEND_URL_PATTERN: "^https://atelier-job.*\\.vercel\\.app$",
+      FRONTEND_URL_PATTERN: "^https://journeyman-job.*\\.vercel\\.app$",
     });
     const res = await request(app).get("/health").set("Origin", STRANGER);
     expect(res.status).toBe(403);
@@ -118,7 +118,7 @@ describe("the root", () => {
     const app = await appWith({ FRONTEND_URL: undefined, FRONTEND_URL_PATTERN: undefined });
     const res = await request(app).get("/");
     expect(res.status).toBe(200);
-    expect(res.body.service).toBe("Atelier API");
+    expect(res.body.service).toBe("Journeyman API");
   });
 
   it("points at the endpoints worth knowing", async () => {

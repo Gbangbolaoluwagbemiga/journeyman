@@ -36,7 +36,7 @@ export function EscrowPoller() {
 
       try {
         const contractService = new ContractService(
-          CONTRACTS.ATELIER_ESCROW
+          CONTRACTS.JOURNEYMAN_ESCROW
         );
         const ids: number[] = await contractService.getUserEscrows(
           wallet.address!

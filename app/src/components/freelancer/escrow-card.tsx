@@ -61,7 +61,7 @@ export function EscrowCard({
 
   useEffect(() => {
     if (!isCompleted || !escrow.payer) return;
-    const svc = new ContractService(CONTRACTS.ATELIER_ESCROW);
+    const svc = new ContractService(CONTRACTS.JOURNEYMAN_ESCROW);
     svc.getClientRating(Number(escrow.id))
       .then((r: any) => setHasClientRating(!!(r && r.score)))
       .catch(() => {});

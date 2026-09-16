@@ -33,7 +33,7 @@ vi.mock("../src/config.js", () => ({
   config: { get graphUrl() { return graphUrl; } },
 }));
 
-let graphUrl = "https://api.studio.thegraph.com/query/atelier";
+let graphUrl = "https://api.studio.thegraph.com/query/journeyman";
 
 const APPLICATIONS = `query GetJobApplications($escrowId: String!) { escrow(id: $escrowId) { applications { freelancer } } }`;
 const BY_ID = `query GetJobById($escrowId: String!) { escrow(id: $escrowId) { title } }`;
@@ -44,7 +44,7 @@ let graphQuery: typeof import("../src/graph/client.js").graphQuery;
 beforeEach(async () => {
   vi.resetModules();
   vi.clearAllMocks();
-  graphUrl = "https://api.studio.thegraph.com/query/atelier";
+  graphUrl = "https://api.studio.thegraph.com/query/journeyman";
   vi.spyOn(console, "warn").mockImplementation(() => {});
   ({ graphQuery } = await import("../src/graph/client.js"));
 

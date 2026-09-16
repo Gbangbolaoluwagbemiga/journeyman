@@ -10,7 +10,7 @@ import fs from "node:fs";
 const DATA_DIR = path.join(process.cwd(), "data");
 fs.mkdirSync(DATA_DIR, { recursive: true });
 
-const DB_PATH = path.join(DATA_DIR, "atelier.db");
+const DB_PATH = path.join(DATA_DIR, "journeyman.db");
 
 /**
  * The database was named for the product this grew out of. Renaming the file
@@ -27,7 +27,7 @@ if (!fs.existsSync(DB_PATH) && fs.existsSync(LEGACY_DB_PATH)) {
   for (const suffix of ["-wal", "-shm", "-journal"]) {
     if (fs.existsSync(LEGACY_DB_PATH + suffix)) fs.renameSync(LEGACY_DB_PATH + suffix, DB_PATH + suffix);
   }
-  console.log("[store] carried data/patron.db over to data/atelier.db");
+  console.log("[store] carried data/patron.db over to data/journeyman.db");
 }
 
 const db = new DatabaseSync(DB_PATH);
@@ -41,10 +41,10 @@ db.exec(`
     status TEXT NOT NULL,
     brief_json TEXT,
     created_at INTEGER NOT NULL,
-    -- Who commissioned this, when we know. Atelier requires Atelier to be the
+    -- Who commissioned this, when we know. Journeyman requires Journeyman to be the
     -- escrow depositor (only the depositor may approve milestones, and the whole
-    -- product is that a machine approves them), so a refund lands with Atelier
-    -- rather than with the client. Recording the payer is what lets Atelier pass
+    -- product is that a machine approves them), so a refund lands with Journeyman
+    -- rather than with the client. Recording the payer is what lets Journeyman pass
     -- it back — see /api/jobs/refund.
     client_address TEXT
   );
@@ -61,7 +61,7 @@ db.exec(`
 
   -- Who put money INTO the treasury, and who has taken any back out.
   --
-  -- The treasury is one pooled wallet: anyone can send to it and Atelier spends
+  -- The treasury is one pooled wallet: anyone can send to it and Journeyman spends
   -- from it to fund escrows. Without this table a depositor's contribution is
   -- indistinguishable from anyone else's the moment it lands, so there is
   -- nothing to show them and nothing to bound a withdrawal by.
@@ -137,10 +137,10 @@ db.exec(`
   -- channel:  which door they came through ('web' | 'telegram'), so a notifier
   --           knows how to reach them. Not a separate table — a person is a
   --           person regardless of surface.
-  -- wallet_*: a real Circle MPC wallet Atelier provisioned FOR them. Atelier
+  -- wallet_*: a real Circle MPC wallet Journeyman provisioned FOR them. Journeyman
   --           signs on their instruction; no key exists anywhere to export.
-  -- mode:     'managed' (Atelier signs) | 'own' (they signed up with their own
-  --           address and sign for themselves — Atelier only notifies).
+  -- mode:     'managed' (Journeyman signs) | 'own' (they signed up with their own
+  --           address and sign for themselves — Journeyman only notifies).
   CREATE TABLE IF NOT EXISTS workers (
     id TEXT PRIMARY KEY,
     handle TEXT NOT NULL,
@@ -426,7 +426,7 @@ export function recordPaymentOnce(p: {
   ).run(p.id, p.direction, p.escrowId ?? null, p.amountUsdc, p.counterparty ?? null, p.txHash ?? null, p.reason ?? null, Date.now());
 }
 
-/** Who Atelier hired for this escrow, per its own decision record. */
+/** Who Journeyman hired for this escrow, per its own decision record. */
 export function hiredFor(escrowId: string): string | null {
   const row = db
     .prepare(`SELECT target FROM decisions WHERE task_id = ? AND type = 'applicant_accepted' AND target IS NOT NULL ORDER BY timestamp DESC LIMIT 1`)

@@ -2,10 +2,10 @@
 pragma solidity ^0.8.20;
 
 import "forge-std/Test.sol";
-import "../src/Atelier.sol";
+import "../src/Journeyman.sol";
 import "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
-/// @dev Minimal ERC20. Atelier only needs transfer/transferFrom/approve.
+/// @dev Minimal ERC20. Journeyman only needs transfer/transferFrom/approve.
 contract MockUSDC {
     string public name = "Mock USDC";
     string public symbol = "USDC";
@@ -57,7 +57,7 @@ contract MockUSDC {
  *   outsider    holds no role, and must stay unable to do anything.
  */
 contract JobManagerBase is Test {
-    Atelier internal sf;
+    Journeyman internal sf;
     MockUSDC internal usdc;
 
     address internal client = address(0xC11E27);
@@ -72,7 +72,7 @@ contract JobManagerBase is Test {
     uint256 internal constant M2 = 600e6;
 
     /// The implementation behind the proxy. Kept so upgrade tests can compare.
-    Atelier internal implementation;
+    Journeyman internal implementation;
     ERC1967Proxy internal proxy;
 
     function setUp() public virtual {
@@ -82,12 +82,12 @@ contract JobManagerBase is Test {
          * contract directly would pass while a real deployment reverted, since
          * the constructor disables initialisers on the implementation.
          */
-        implementation = new Atelier();
+        implementation = new Journeyman();
         proxy = new ERC1967Proxy(
             address(implementation),
-            abi.encodeCall(Atelier.initialize, (feeCollector, 250)) // 2.5%
+            abi.encodeCall(Journeyman.initialize, (feeCollector, 250)) // 2.5%
         );
-        sf = Atelier(payable(address(proxy)));
+        sf = Journeyman(payable(address(proxy)));
 
         usdc = new MockUSDC();
         sf.whitelistToken(address(usdc));

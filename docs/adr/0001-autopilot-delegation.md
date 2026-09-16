@@ -18,7 +18,7 @@
 > There is a second, abandoned proxy at `0x370e…0C11` from earlier the same day.
 > It is identical code and it worked — the live delegation was first proved on
 > it — but it carries a cancelled smoke-test escrow, so `nextEscrowId` starts at
-> 2 there. Atelier runs on a contract with no history at all rather than one
+> 2 there. Journeyman runs on a contract with no history at all rather than one
 > whose first job is a test, and the redeploy cost about \$0.30 of faucet gas.
 > Nothing points at `0x370e…0C11` any more.
 >
@@ -30,7 +30,7 @@
 
 ## The claim we want to make
 
-Atelier's middle row — a human client, managed by Autopilot — is only worth
+Journeyman's middle row — a human client, managed by Autopilot — is only worth
 anything if this sentence is true:
 
 > The agent can pay the freelancer. It can never pay itself, move your money
@@ -47,7 +47,7 @@ rather than a leap of faith.
 Every management function on the deployed contract checks the depositor:
 
 ```solidity
-// SecureFlow.sol  — pre-rename; this file is now src/Atelier.sol
+// SecureFlow.sol  — pre-rename; this file is now src/Journeyman.sol
 function approveMilestone(uint256 escrowId, uint256 milestoneIndex) external … {
     Escrow storage esc = _requireEscrow(escrowId);
     if (esc.depositor != msg.sender) revert Unauthorized();
@@ -57,27 +57,27 @@ function approveMilestone(uint256 escrowId, uint256 milestoneIndex) external …
 cannot manage an escrow that a client funded — there is no seat at the table
 for a third party.
 
-Atelier works around this by **being the depositor itself.** When a human
-commissions Atelier today (`POST /api/instruct`), they deposit into Atelier's
-shared treasury, and `createEscrow` is then called with Atelier's own Circle
+Journeyman works around this by **being the depositor itself.** When a human
+commissions Journeyman today (`POST /api/instruct`), they deposit into Journeyman's
+shared treasury, and `createEscrow` is then called with Journeyman's own Circle
 Agent Wallet as the signer:
 
 ```ts
-// agent/daemon/src/web3/secureflow.ts  — pre-rename; now web3/atelier.ts
-account: signer.address,   // Atelier's wallet — not the human's
+// agent/daemon/src/web3/secureflow.ts  — pre-rename; now web3/journeyman.ts
+account: signer.address,   // Journeyman's wallet — not the human's
 ```
 
-The human's position is a row in Atelier's SQLite ledger. On-chain they are
-nobody. Concretely, a human client of Atelier today:
+The human's position is a row in Journeyman's SQLite ledger. On-chain they are
+nobody. Concretely, a human client of Journeyman today:
 
 - is **not** the escrow depositor
 - **cannot** approve or reject a milestone
 - **cannot** raise a dispute — `disputeMilestone` admitted only the depositor
   and the beneficiary when this was written; see the amendment below
 - **cannot** cancel, extend, or reclaim after the deadline
-- relies on Atelier's honesty and uptime for the return of unspent funds
+- relies on Journeyman's honesty and uptime for the return of unspent funds
 
-That is a custodial arrangement. It is fine for what Atelier was — an agent
+That is a custodial arrangement. It is fine for what Journeyman was — an agent
 spending *its own* money — and it is not fine as the basis for asking a
 stranger to hand over management of *their* money.
 
@@ -148,9 +148,9 @@ case we did *not* design for, per BRIEF.md:
 
 - **A new contract deployment.** The deployed `0x6142…ab59` cannot gain this;
   Arc mainnet is already on the schedule for Sept 14, so this rides along.
-- **Atelier's daemon changes shape** for human-commissioned jobs: it stops being
+- **Journeyman's daemon changes shape** for human-commissioned jobs: it stops being
   the depositor and starts being the manager of an escrow the client funded.
-  Its agent-commissioned path (`/api/hire`, x402) is unaffected — there, Atelier
+  Its agent-commissioned path (`/api/hire`, x402) is unaffected — there, Journeyman
   genuinely is the client and should be the depositor.
 - **The `verified`/reputation work stacks on top**, because the manager is now
   a distinct on-chain role that can carry its own record.
@@ -164,7 +164,7 @@ the client signs, the relayer submits. Rejected because it needs the client
 present to sign each approval, which is precisely the labour Autopilot is
 supposed to remove. It solves gas, not delegation.
 
-**Keep Atelier as depositor, add an off-chain promise.** Rejected: it is the
+**Keep Journeyman as depositor, add an off-chain promise.** Rejected: it is the
 current arrangement, and no amount of UI can make a SQLite row into an escrow.
 
 **A generic account-abstraction session key.** Stronger in the abstract, but it
@@ -210,7 +210,7 @@ would report 128,000 calls, zero reverts, and three green invariants while
 testing nothing.
 
 **Still to do before the UI may claim this:** redeploy (rides along with the
-Sept 14 Arc mainnet push), then wire `setJobManager` into Atelier's Autopilot
+Sept 14 Arc mainnet push), then wire `setJobManager` into Journeyman's Autopilot
 job creation, then delete the in-source `NOT TRUE YET` marker in
 `PostJobPage.tsx` and the custody notice in `AutopilotComposePage.tsx`.
 

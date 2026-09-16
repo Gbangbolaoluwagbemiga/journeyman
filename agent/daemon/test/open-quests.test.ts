@@ -28,7 +28,7 @@ vi.mock("../src/store.js", () => ({
   listWorkers: () => [],
 }));
 
-vi.mock("../src/web3/atelier.js", () => ({
+vi.mock("../src/web3/journeyman.js", () => ({
   openEscrows: () => openEscrows(),
   hiredEscrowsFor: vi.fn(),
   hasApplied: vi.fn(),
@@ -49,7 +49,7 @@ const OWN_TASK = {
   status: "posted",
   instruction: "A one-pager",
   briefJson: JSON.stringify({
-    title: "Atelier one-pager", budget: 0.5, durationDays: 2,
+    title: "Journeyman one-pager", budget: 0.5, durationDays: 2,
     criteria: ["Plain language"], milestones: [{ description: "The page", amount: 0.5 }],
   }),
   createdAt: Date.now(),
@@ -101,7 +101,7 @@ describe("the open board", () => {
 
     const board = await openQuests();
     expect(board).toHaveLength(1);
-    expect(board[0].title).toBe("Atelier one-pager"); // the brief wins
+    expect(board[0].title).toBe("Journeyman one-pager"); // the brief wins
   });
 
   it("still shows the agent's own jobs when the chain will not answer", async () => {

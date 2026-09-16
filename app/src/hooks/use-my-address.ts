@@ -1,7 +1,7 @@
 /**
  * WHO IS USING THE APP RIGHT NOW.
  *
- * Atelier has two ways to be somebody: a wallet you connected, and a managed
+ * Journeyman has two ways to be somebody: a wallet you connected, and a managed
  * Circle wallet you signed into with Google. Most of the app was written when
  * only the first existed, so surfaces kept reaching for `wallet.address` — and
  * a managed worker, who never connects one, read as nobody.
@@ -19,7 +19,7 @@
 
 import { useEffect, useState } from "react";
 import { useWeb3 } from "@/contexts/web3-context";
-import { currentWorkerAddress, WORKER_IDENTITY_EVENT } from "@/lib/atelier/worker";
+import { currentWorkerAddress, WORKER_IDENTITY_EVENT } from "@/lib/journeyman/worker";
 
 export function useMyAddress(): string | null {
   const { wallet } = useWeb3();

@@ -19,8 +19,8 @@ import { reviewWork, buildRevisionRequest, shouldEscalateToHuman, type WorkRevie
 import type { AcceptanceBrief, AgentDecision, Application } from "../web3/types.js";
 import { graphQuery } from "../graph/client.js";
 import { GET_JOB_APPLICATIONS, type GQLApplication } from "../graph/queries.js";
-import * as atelier from "../web3/atelier.js";
-import type { AtelierGateway } from "../circle/gateway.js";
+import * as journeyman from "../web3/journeyman.js";
+import type { JourneymanGateway } from "../circle/gateway.js";
 import { config } from "../config.js";
 import * as store from "../store.js";
 import { parseUnits } from "viem";
@@ -50,7 +50,7 @@ export interface AgentEvent {
   txHash?: string;
   /** USDC amount tied to this event (job budget on post, milestone amount on release) — surfaced in the payment feed. */
   amountUsdc?: string;
-  /** Who Atelier paid/was paid by — only set on payment-bearing events. */
+  /** Who Journeyman paid/was paid by — only set on payment-bearing events. */
   counterparty?: string;
   /**
    * The job's title, carried on job_posted.
@@ -71,9 +71,9 @@ export class AgentClient {
   private onEvent: AgentEventCallback;
   private decisions: AgentDecision[] = [];
   /** Lazily resolved — the daemon still boots without Circle configured; only this buy-side call needs it. */
-  private getGateway?: () => AtelierGateway;
+  private getGateway?: () => JourneymanGateway;
 
-  constructor(onEvent: AgentEventCallback, getGateway?: () => AtelierGateway) {
+  constructor(onEvent: AgentEventCallback, getGateway?: () => JourneymanGateway) {
     this.onEvent = onEvent;
     this.getGateway = getGateway;
   }
@@ -91,15 +91,15 @@ export class AgentClient {
       `Brief generated: "${brief.title}" — ${brief.criteria.length} acceptance criteria, ${brief.milestones.length} milestone(s)`,
     );
 
-    this.emit("job_posted", "Posting job to Atelier escrow on Arc...");
-    const { escrowId, txHash } = await atelier.createEscrow({
+    this.emit("job_posted", "Posting job to Journeyman escrow on Arc...");
+    const { escrowId, txHash } = await journeyman.createEscrow({
       totalAmount: parseUnits(brief.budget.toString(), 6),
       durationDays: BigInt(brief.durationDays),
       milestoneAmounts: brief.milestones.map((m) => parseUnits(m.amount.toString(), 6)),
       milestoneDescriptions: brief.milestones.map((m) => m.description),
       projectTitle: brief.title,
       // briefHash appended so the brief can't be silently altered after the escrow
-      // is live, but as plain readable text — Atelier's own UI renders this field
+      // is live, but as plain readable text — Journeyman's own UI renders this field
       // raw for freelancers, and nothing downstream ever parses it back as JSON, so
       // JSON.stringify()-ing it just showed up as gibberish on a real, live-facing surface.
       projectDescription: `${instruction}\n\nCriteria hash (verifies the brief hasn't changed): ${brief.briefHash}`,
@@ -123,7 +123,7 @@ export class AgentClient {
      * worth failing over a term that only ever improves it.
      */
     try {
-      await atelier.setYieldOptIn(escrowId, true);
+      await journeyman.setYieldOptIn(escrowId, true);
     } catch (err) {
       console.warn(
         "[agent] escrow funded but not put to work:",
@@ -135,7 +135,7 @@ export class AgentClient {
       escrowId: escrowId.toString(),
       amountUsdc: brief.budget.toString(),
       txHash,
-      counterparty: "Atelier escrow",
+      counterparty: "Journeyman escrow",
       title: brief.title,
     });
 
@@ -233,7 +233,7 @@ export class AgentClient {
       }
     }
 
-    const txHash = await atelier.acceptFreelancer(escrowId, winner.freelancerAddress as `0x${string}`);
+    const txHash = await journeyman.acceptFreelancer(escrowId, winner.freelancerAddress as `0x${string}`);
     const winnerDecision: AgentDecision = {
       id: crypto.randomUUID(),
       taskId: escrowId.toString(),
@@ -287,7 +287,7 @@ export class AgentClient {
         escrowId: escrowId.toString(),
       });
 
-      const txHash = await atelier.approveMilestone(escrowId, milestoneIndex);
+      const txHash = await journeyman.approveMilestone(escrowId, milestoneIndex);
       const milestoneAmount = brief.milestones[Number(milestoneIndex)]?.amount;
       this.emit("payment_released", "Payment released. Milestone complete.", {
         escrowId: escrowId.toString(),
@@ -329,7 +329,7 @@ export class AgentClient {
         taskId: escrowId.toString(),
         type: "escalated",
         reasoning: [
-          `After ${maxRounds} revision round(s), the work still does not meet the brief. Escalating to a human arbiter via Atelier's dispute system.`,
+          `After ${maxRounds} revision round(s), the work still does not meet the brief. Escalating to a human arbiter via Journeyman's dispute system.`,
           "",
           `Final submission scored ${review.score}/100.`,
           review.feedback ? `What was still missing: ${review.feedback}` : "",
@@ -343,12 +343,12 @@ export class AgentClient {
         timestamp: Date.now(),
       };
       this.decisions.push(decision);
-      const txHash = await atelier.disputeMilestone(
+      const txHash = await journeyman.disputeMilestone(
         escrowId,
         milestoneIndex,
-        // This string is what the human arbiter sees on Atelier. "Revision
+        // This string is what the human arbiter sees on Journeyman. "Revision
         // rounds exhausted" tells them nothing they can rule on.
-        `Atelier AI: ${history.length} revision round(s) exhausted. Final submission scored ${review.score}/100. ${
+        `Journeyman AI: ${history.length} revision round(s) exhausted. Final submission scored ${review.score}/100. ${
           review.feedback || "See the decision log for the full reasoning."
         }`.slice(0, 500),
       );
@@ -401,7 +401,7 @@ export class AgentClient {
       timestamp: Date.now(),
     };
     this.decisions.push(decision);
-    const txHash = await atelier.rejectMilestone(escrowId, milestoneIndex, feedback);
+    const txHash = await journeyman.rejectMilestone(escrowId, milestoneIndex, feedback);
     this.emit(
       "revision_requested",
       `Work scored ${review.score}/100. Revision requested (${revisionsRemaining} round(s) left).`,

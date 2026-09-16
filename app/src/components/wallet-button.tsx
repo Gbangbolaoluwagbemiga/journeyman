@@ -41,7 +41,7 @@ import { useWeb3 } from "@/contexts/web3-context";
 import { useState } from "react";
 import { useAppKit } from "@reown/appkit/react";
 import { useManagedWorker } from "@/hooks/use-managed-worker";
-import { ManagedWalletMenu } from "@/components/atelier/managed-wallet-menu";
+import { ManagedWalletMenu } from "@/components/journeyman/managed-wallet-menu";
 
 export function WalletButton() {
   const { wallet, connectWallet } = useWeb3();

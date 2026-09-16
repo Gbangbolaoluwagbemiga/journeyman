@@ -1,7 +1,7 @@
 import { Routes, Route, Outlet, Navigate, useLocation } from "react-router-dom";
 import { ErrorBoundary } from "./components/error-boundary";
 import { Navbar } from "./components/navbar";
-import { AskAtelierDock } from "./components/atelier/ask-atelier-dock";
+import { AskJourneymanDock } from "./components/journeyman/ask-journeyman-dock";
 import { Toaster } from "./components/ui/toaster";
 import { NewMessageWatcher } from "./components/new-message-watcher";
 import { EscrowPoller } from "./components/escrow-poller";
@@ -43,16 +43,16 @@ const AppLayout = () => {
         assistant is one of the few things still able to tell somebody what is
         going on — putting it inside would take it down with the page.
       */}
-      <AskAtelierDock />
+      <AskJourneymanDock />
       <Toaster />
     </>
   );
 };
 
 /**
- * Atelier's routes.
+ * Journeyman's routes.
  *
- * The IA is in `lib/atelier/nav.ts`; this table implements it. Two things worth
+ * The IA is in `lib/journeyman/nav.ts`; this table implements it. Two things worth
  * knowing before editing:
  *
  * 1. The original app's paths still resolve. /create, /dashboard and

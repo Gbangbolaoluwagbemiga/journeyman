@@ -17,7 +17,7 @@ export function useJobCreatorStatus() {
 
     setLoading(true);
     try {
-      const contractService = new ContractService(CONTRACTS.ATELIER_ESCROW);
+      const contractService = new ContractService(CONTRACTS.JOURNEYMAN_ESCROW);
 
       // Check up to 20 escrows (reasonable limit)
       const maxEscrowsToCheck = 20;

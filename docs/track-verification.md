@@ -1,10 +1,10 @@
 # Track verification — the three open questions, answered
 
 > **Superseded on the eligibility question. See [`tracks.md`](tracks.md) for what
-> Atelier actually submits for.**
+> Journeyman actually submits for.**
 >
 > This page was written on 2026-09-06, while the project was still expected to
-> enter under Continuity. That decision was reversed: Atelier is registered from
+> enter under Continuity. That decision was reversed: Journeyman is registered from
 > scratch, so every Continuity-only prize is out and the From Scratch pools are
 > in. The rows below that assume Continuity are wrong and are marked. Everything
 > else here — what Goldsky costs us, what Arc does and does not have — was
@@ -165,7 +165,7 @@ itself lists **eleven**, and two of the missing ones matter:
 | **Bazantic** | $1.5k | **$3,000** across four tracks |
 | **Privy** | listed Tier 2 | confirmed, 2 × $2,500 |
 
-Arc being $10k rather than $3.1k changes the ordering: it is the chain Atelier
+Arc being $10k rather than $3.1k changes the ordering: it is the chain Journeyman
 already lives on, the integration is already done, and the remaining work is a
 mainnet deploy that has a deadline of Sept 30 rather than Sept 16.
 
@@ -204,8 +204,8 @@ approach the campaign plan was built on — spread across ten tracks for ~$19.7k
 addressable — is not a thing that can be submitted. Three is the number.
 
 **2. We are entering as a new project, not on Continuity.** The reasoning is
-the entrant's own and it is sound: Continuity puts Atelier beside projects that
-arrive with real users and real volume, and Atelier has neither. It is a week
+the entrant's own and it is sound: Continuity puts Journeyman beside projects that
+arrive with real users and real volume, and Journeyman has neither. It is a week
 old. Competing on "what did you build this week" is a fair fight; competing on
 traction is not one we can win.
 
@@ -220,7 +220,7 @@ our own prior open-source work as the boilerplate it is.
 | Partner | Prize | Why |
 |---|---|---|
 | **The Graph** | $15,000 | Largest pool. The agent polls the subgraph to hire, score and pay — load-bearing, not decorative. Blocked only on a Studio key. |
-| **Arc** | $10,000 | Atelier is an Arc application: USDC-native, deployed, upgradeable, agentic. Mainnet opens Sept 16 with a Sept 30 deadline. |
+| **Arc** | $10,000 | Journeyman is an Arc application: USDC-native, deployed, upgradeable, agentic. Mainnet opens Sept 16 with a Sept 30 deadline. |
 | **Uniswap** | $5,000 | Productive escrow, fuzz-tested, with a `FEEDBACK.md` that names three real integration frictions. |
 
 Not applying to: World, Privy, Ledger, Chainlink, 1inch, ENS, Hedera, Bazantic.

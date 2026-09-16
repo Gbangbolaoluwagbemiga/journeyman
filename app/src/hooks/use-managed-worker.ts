@@ -3,7 +3,7 @@
  * in without a wallet.
  *
  * Separate from useWeb3 on purpose. Web3 context answers "is a wallet
- * connected"; this answers "is a person signed in", and on Atelier those are
+ * connected"; this answers "is a person signed in", and on Journeyman those are
  * different questions with different answers — the whole managed-worker door
  * exists because the second can be yes while the first is no.
  *
@@ -19,7 +19,7 @@ import {
   forgetWorker,
   me as fetchMe,
   type Worker,
-} from "@/lib/atelier/worker";
+} from "@/lib/journeyman/worker";
 
 export interface ManagedWorkerState {
   worker: Worker | null;

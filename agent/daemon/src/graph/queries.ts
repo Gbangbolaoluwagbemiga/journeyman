@@ -1,5 +1,5 @@
-// Atelier-specific subgraph queries
-// All jobs Atelier posted are identified by depositor === Atelier's Agent Wallet address
+// Journeyman-specific subgraph queries
+// All jobs Journeyman posted are identified by depositor === Journeyman's Agent Wallet address
 
 export const GET_AGENT_JOBS = `
   query GetAgentJobs($agentAddress: Bytes!) {

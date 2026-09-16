@@ -21,7 +21,7 @@ const getMilestones = vi.fn();
 const graphQuery = vi.fn();
 const getEscrow = vi.fn();
 
-vi.mock("../src/web3/atelier.js", () => ({
+vi.mock("../src/web3/journeyman.js", () => ({
   getMilestones: (id: bigint) => getMilestones(id),
   getEscrow: (id: bigint) => getEscrow(id),
   hiredEscrowsFor: vi.fn(),

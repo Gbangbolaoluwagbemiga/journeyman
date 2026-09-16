@@ -17,15 +17,15 @@
 // manager, and give each one a task row so the existing poller takes it from
 // there. Nothing else about the loop changes.
 import { getAddress, type Abi } from "viem";
-import atelierAbi from "../web3/AtelierABI.json" with { type: "json" };
+import journeymanAbi from "../web3/JourneymanABI.json" with { type: "json" };
 import { config } from "../config.js";
-import { getLogClient, getPublicClient } from "../web3/atelier.js";
+import { getLogClient, getPublicClient } from "../web3/journeyman.js";
 import { createCircleSigner } from "../circle/circleSigner.js";
 import * as store from "../store.js";
 import { generateBrief } from "./BriefGenerator.js";
 import { getPrefs } from "./handover.js";
 
-const abi = atelierAbi as Abi;
+const abi = journeymanAbi as Abi;
 
 interface RawEscrow {
   depositor: string;
@@ -86,9 +86,9 @@ async function delegatedTo(
 
   const savedCursor = store.getPollerInt(CURSOR_KEY);
   const startFrom =
-    savedCursor && BigInt(savedCursor) > config.atelierDeployBlock
+    savedCursor && BigInt(savedCursor) > config.journeymanDeployBlock
       ? BigInt(savedCursor) - REWIND
-      : config.atelierDeployBlock;
+      : config.journeymanDeployBlock;
 
   /*
    * Bounded work, and keep whatever ground it gains.
@@ -115,7 +115,7 @@ async function delegatedTo(
 
     try {
       const logs = await client.getLogs({
-        address: config.atelierAddress,
+        address: config.journeymanAddress,
         event,
         args: { manager },
         fromBlock: from,
@@ -177,7 +177,7 @@ async function delegatedTo(
   const still = await Promise.all(
     [...seen].map(async (id) => {
       const current = (await client.readContract({
-        address: config.atelierAddress,
+        address: config.journeymanAddress,
         abi,
         functionName: "jobManager",
         args: [id],
@@ -255,7 +255,7 @@ export async function adoptDelegatedJobs(): Promise<number> {
     if (!stillOurs.has(String(t.escrowId))) continue; // handled above
     try {
       const esc = (await client.readContract({
-        address: config.atelierAddress,
+        address: config.journeymanAddress,
         abi,
         functionName: "getEscrow",
         args: [BigInt(t.escrowId!)],
@@ -273,7 +273,7 @@ export async function adoptDelegatedJobs(): Promise<number> {
     if (known.has(String(id))) continue;
 
     const esc = (await client.readContract({
-      address: config.atelierAddress,
+      address: config.journeymanAddress,
       abi,
       functionName: "getEscrow",
       args: [id],
@@ -340,7 +340,7 @@ export async function adoptDelegatedJobs(): Promise<number> {
        * output is kept only for the acceptance criteria it structured.
        */
       const onChain = (await client.readContract({
-        address: config.atelierAddress,
+        address: config.journeymanAddress,
         abi,
         functionName: "getMilestones",
         args: [id],

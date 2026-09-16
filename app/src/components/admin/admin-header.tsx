@@ -10,7 +10,7 @@ export function AdminHeader() {
       <div className="mb-8">
         <h1 className="text-4xl md:text-5xl font-bold mb-2">Admin Dashboard</h1>
         <p className="text-xl text-muted-foreground">
-          Manage the Atelier contract and monitor system statistics
+          Manage the Journeyman contract and monitor system statistics
         </p>
       </div>
     </motion.div>

@@ -1,7 +1,7 @@
 # FEEDBACK.md — building productive escrow on the Uniswap stack
 
 Required by the Uniswap Foundation track. Written for ETHOnline 2026 by the
-team behind [Atelier](https://github.com/Gbangbolaoluwagbemiga/Atelier) —
+team behind [Journeyman](https://github.com/Gbangbolaoluwagbemiga/Journeyman) —
 milestone escrow on Arc where the client can be a person or an AI agent.
 
 **What we built:** escrowed capital sits idle between a job being funded and a
@@ -15,15 +15,15 @@ paying a freelancer.
 |---|---|
 | Adapter interface | [`src/yield/IYieldAdapter.sol`](app/contracts/solidity/src/yield/IYieldAdapter.sol) |
 | Uniswap v4 adapter | [`src/yield/UniswapV4StableAdapter.sol`](app/contracts/solidity/src/yield/UniswapV4StableAdapter.sol) |
-| Escrow-side policy | [`src/yield/AtelierYield.sol`](app/contracts/solidity/src/yield/AtelierYield.sol) — `investableCeiling`, `investableAmount`, `ensureLiquid`, `onObligationChanged` |
-| Escrow-side wiring | [`src/Atelier.sol`](app/contracts/solidity/src/Atelier.sol) — `releaseToYield`, `_rebalanceYield`, `_ensureLiquid` |
+| Escrow-side policy | [`src/yield/JourneymanYield.sol`](app/contracts/solidity/src/yield/JourneymanYield.sol) — `investableCeiling`, `investableAmount`, `ensureLiquid`, `onObligationChanged` |
+| Escrow-side wiring | [`src/Journeyman.sol`](app/contracts/solidity/src/Journeyman.sol) — `releaseToYield`, `_rebalanceYield`, `_ensureLiquid` |
 | Tests | [`test/ProductiveEscrow.t.sol`](app/contracts/solidity/test/ProductiveEscrow.t.sol), [`test/ProductiveEscrowInvariant.t.sol`](app/contracts/solidity/test/ProductiveEscrowInvariant.t.sol) |
 
 ---
 
 ## 1. v4 is not on Arc testnet, and that shaped the whole build
 
-Atelier's escrows live on **Arc testnet** (chain `5042002`). v4's PoolManager is
+Journeyman's escrows live on **Arc testnet** (chain `5042002`). v4's PoolManager is
 deployed on **Arc mainnet** (`0x8366a39cc670b4001a1121b8f6a443a643e40951`), which
 opens 2026-09-16 — submission day.
 
@@ -107,7 +107,7 @@ person and answered no question the contract could ask.
 
 **Version two derives the reserve instead of choosing it.** The cap is the
 largest claim that could arrive next, read from the escrow's own milestones —
-[`AtelierYield.sol`](app/contracts/solidity/src/yield/AtelierYield.sol),
+[`JourneymanYield.sol`](app/contracts/solidity/src/yield/JourneymanYield.sol),
 `investableCeiling`:
 
 - An **open job** is refundable in full at any instant, so none of it is lendable
@@ -144,7 +144,7 @@ adapter:
    imminent claim" and can use the same reserve rule. That is the part we think
    is reusable, more than the adapter itself.
 
-What we are **not** doing is writing a hook. Atelier is a liquidity provider
+What we are **not** doing is writing a hook. Journeyman is a liquidity provider
 with a known exit date, not a swap venue, and a hook here would be a buzzword
 attached to a product that does not need one.
 

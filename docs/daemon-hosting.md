@@ -1,6 +1,6 @@
 # Hosting the Autopilot daemon
 
-The daemon is the only part of Atelier that still runs on a laptop, and it is
+The daemon is the only part of Journeyman that still runs on a laptop, and it is
 the part a judge is most likely to want to see working: the Circle Agent Stack
 prize is about an agent that transacts, and an agent that is asleep transacts
 nothing. Everything below is already in the repo — `Dockerfile`, `railway.toml`
@@ -15,7 +15,7 @@ between requests cannot do any of those. It needs a container that stays up.
 
 ## 1. Create the service
 
-<https://railway.app> → your existing Atelier project → **New** → **GitHub Repo**
+<https://railway.app> → your existing Journeyman project → **New** → **GitHub Repo**
 → this repository.
 
 Then, in the new service's **Settings**:
@@ -49,7 +49,7 @@ which it cannot act at all.
 
 | Variable | Why |
 |---|---|
-| `ATELIER_CONTRACT_ADDRESS` | **Required.** The proxy it hires and pays through |
+| `JOURNEYMAN_CONTRACT_ADDRESS` | **Required.** The proxy it hires and pays through |
 | `ARC_RPC_URL` | **Required.** Chain access |
 | `CIRCLE_API_KEY` · `CIRCLE_ENTITY_SECRET` | **Required.** Without these it holds no wallet and signs nothing |
 | `CIRCLE_WALLET_ID` · `CIRCLE_WALLET_ADDRESS` | **Required.** The agent's own treasury |

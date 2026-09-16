@@ -2,7 +2,7 @@
 pragma solidity ^0.8.20;
 
 import "./JobManagerBase.t.sol";
-import "../src/yield/AtelierYield.sol";
+import "../src/yield/JourneymanYield.sol";
 import "../src/yield/SponsoredVault.sol";
 
 /**
@@ -16,14 +16,14 @@ import "../src/yield/SponsoredVault.sol";
  * and the thing being rescued would be somebody's unpaid milestone.
  */
 contract SponsoredVaultTest is JobManagerBase {
-    AtelierYield internal yield_;
+    JourneymanYield internal yield_;
     SponsoredVault internal venue;
 
     address internal sponsorAddr = address(0x5900);
 
     function setUp() public override {
         super.setUp();
-        yield_ = new AtelierYield(address(sf));
+        yield_ = new JourneymanYield(address(sf));
         venue = new SponsoredVault(address(usdc), address(yield_));
 
         sf.setYieldController(address(yield_));
@@ -165,7 +165,7 @@ contract SponsoredVaultTest is JobManagerBase {
         sf.startWork(id);
 
         vm.prank(client);
-        vm.expectRevert(AtelierYield.TooLateToChoose.selector);
+        vm.expectRevert(JourneymanYield.TooLateToChoose.selector);
         yield_.setYieldOptIn(id, true);
 
         yield_.investIdle(id);
@@ -196,9 +196,9 @@ contract SponsoredVaultTest is JobManagerBase {
     }
 
     function _finishRemaining(uint256 id) internal {
-        Atelier.Milestone[] memory ms = sf.getMilestones(id);
+        Journeyman.Milestone[] memory ms = sf.getMilestones(id);
         for (uint256 i; i < ms.length; ++i) {
-            if (ms[i].status == Atelier.MilestoneStatus.NotStarted && ms[i].amount > 0) {
+            if (ms[i].status == Journeyman.MilestoneStatus.NotStarted && ms[i].amount > 0) {
                 _submit(id, i);
                 vm.prank(client);
                 sf.approveMilestone(id, i);

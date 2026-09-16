@@ -18,7 +18,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
  */
 
 const getEscrow = vi.fn();
-vi.mock("../src/web3/atelier.js", () => ({ getEscrow: (id: bigint) => getEscrow(id) }));
+vi.mock("../src/web3/journeyman.js", () => ({ getEscrow: (id: bigint) => getEscrow(id) }));
 vi.mock("../src/store.js", () => ({ listTasks: () => [], hiredFor: () => null }));
 
 let apiUrl = "https://api.test";

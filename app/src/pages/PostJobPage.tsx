@@ -1,5 +1,5 @@
 /**
- * POST A JOB — the fork where Atelier's product decision becomes visible.
+ * POST A JOB — the fork where Journeyman's product decision becomes visible.
  *
  * Two ways to run a job, and the choice is NOT "hire a person or hire a
  * machine". The freelancer is a human in both. What the client picks here is

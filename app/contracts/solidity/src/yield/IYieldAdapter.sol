@@ -7,7 +7,7 @@ pragma solidity ^0.8.20;
  *
  * WHY THIS INTERFACE IS SO SMALL
  *
- * Atelier holds other people's money. The yield layer is the only part of
+ * Journeyman holds other people's money. The yield layer is the only part of
  * this system that can lose some, so the escrow is allowed to know as little
  * about it as possible: put money in, take money out, ask how much is there.
  * No pool ids, no ticks, no swap paths, no callbacks. A venue that needs the
@@ -46,7 +46,7 @@ interface IYieldAdapter {
      */
     /**
      * @dev Withdrawn assets MUST be sent to msg.sender — the vault that called,
-     *      not the escrow behind it. AtelierYield forwards them on itself, so an
+     *      not the escrow behind it. JourneymanYield forwards them on itself, so an
      *      adapter that pays the escrow directly leaves the vault trying to
      *      forward money it never received. The two implementations disagreed
      *      about this once; saying it here is what stops them disagreeing again.

@@ -4,7 +4,7 @@ import { renderHook } from "@testing-library/react";
 /**
  * WHO IS USING THE APP RIGHT NOW.
  *
- * Atelier has two ways to be somebody, and most of it was written when only
+ * Journeyman has two ways to be somebody, and most of it was written when only
  * one existed. Surfaces reached for `wallet.address`, so a managed worker —
  * who signs in with Google and never connects a wallet — read as nobody.
  *
@@ -19,9 +19,9 @@ vi.mock("@/contexts/web3-context", () => ({
 }));
 
 let stored: string | null = null;
-vi.mock("@/lib/atelier/worker", () => ({
+vi.mock("@/lib/journeyman/worker", () => ({
   currentWorkerAddress: () => stored,
-  WORKER_IDENTITY_EVENT: "atelier:worker-identity",
+  WORKER_IDENTITY_EVENT: "journeyman:worker-identity",
 }));
 
 const { useMyAddress, sameAddress } = await import("@/hooks/use-my-address");
@@ -55,7 +55,7 @@ describe("who I am", () => {
     expect(result.current).toBeNull();
 
     stored = MANAGED;
-    window.dispatchEvent(new Event("atelier:worker-identity"));
+    window.dispatchEvent(new Event("journeyman:worker-identity"));
     rerender();
 
     expect(result.current).toBe(MANAGED);

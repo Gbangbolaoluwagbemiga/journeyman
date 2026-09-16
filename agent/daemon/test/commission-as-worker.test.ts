@@ -46,7 +46,7 @@ vi.mock("../src/store.js", () => ({
   listWorkers: () => [],
 }));
 
-vi.mock("../src/web3/atelier.js", () => ({
+vi.mock("../src/web3/journeyman.js", () => ({
   createEscrow: (p: unknown, s: unknown) => createEscrow(p, s),
   setJobManager: (a: bigint, b: string, c: unknown) => setJobManager(a, b, c),
   setYieldOptIn: (a: bigint, b: boolean, c: unknown) => setYieldOptIn(a, b, c),

@@ -11,11 +11,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { usePublicClient, useWriteContract } from "wagmi";
 import { useWeb3 } from "@/contexts/web3-context";
 import { contractService } from "@/lib/web3/contract-service";
-import { humanizeError } from "@/lib/atelier/errors";
+import { humanizeError } from "@/lib/journeyman/errors";
 import {
   AUTOPILOT_CONFIGURED,
   fetchAutopilotAddress,
-} from "@/lib/atelier/agent-api";
+} from "@/lib/journeyman/agent-api";
 
 export interface JobManagerState {
   /** The managing agent's address, or null when the client runs the job. */
@@ -62,7 +62,7 @@ const managerWatchers = new Map<number, Set<(v: string | null) => void>>();
  * for the person who did it — everyone else waits for the daemon, which is the
  * honest source for what the agent is actually working on.
  */
-export const JOB_MANAGER_EVENT = "atelier:job-manager";
+export const JOB_MANAGER_EVENT = "journeyman:job-manager";
 
 /**
  * What this browser has learned first-hand about who manages which job.

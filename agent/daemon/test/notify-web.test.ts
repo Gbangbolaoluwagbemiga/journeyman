@@ -20,7 +20,7 @@ import type { AgentEvent } from "../src/agent/AgentClient.js";
 
 const getEscrow = vi.fn();
 const getEscrowApplications = vi.fn();
-vi.mock("../src/web3/atelier.js", () => ({ getEscrow, getEscrowApplications }));
+vi.mock("../src/web3/journeyman.js", () => ({ getEscrow, getEscrowApplications }));
 vi.mock("../src/config.js", () => ({
   config: {
     apiUrl: "https://api.test",

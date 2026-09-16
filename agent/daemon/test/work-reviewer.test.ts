@@ -18,7 +18,7 @@ import type { AcceptanceBrief } from "../src/web3/types.js";
  *
  * Every one of these came from a model behaving differently from the last one.
  * That is the whole point: the guards live in code precisely so that whether
- * Atelier pays does not depend on the model of the day.
+ * Journeyman pays does not depend on the model of the day.
  */
 
 const groqStructured = vi.fn();

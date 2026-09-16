@@ -50,7 +50,7 @@ import {FullMath} from "v4-core/libraries/FullMath.sol";
  *
  *   withdraw(assets) returns exactly `assets`, or reverts.
  *
- * Never a partial transfer reported as success. Atelier's circuit breaker is
+ * Never a partial transfer reported as success. Journeyman's circuit breaker is
  * built on telling those apart: a revert is caught and the payout proceeds from
  * cash, while a silent shortfall is a hole nobody notices until a freelancer is
  * not paid.
@@ -73,7 +73,7 @@ import {FullMath} from "v4-core/libraries/FullMath.sol";
  * a cancun chain — Base, Ethereum, Unichain, and Arc mainnet when it opens. On
  * a chain without transient storage there is no v4 to integrate with at all.
  * The fork tests run under [profile.fork] for exactly this reason, while the
- * default profile stays on shanghai for what Atelier deploys to Arc.
+ * default profile stays on shanghai for what Journeyman deploys to Arc.
  */
 contract UniswapV4StableAdapter is IYieldAdapter, IUnlockCallback, Ownable2Step {
     using SafeERC20 for IERC20;
@@ -90,7 +90,7 @@ contract UniswapV4StableAdapter is IYieldAdapter, IUnlockCallback, Ownable2Step 
     error NothingToWithdraw();
 
     /**
-     * The vault this adapter serves — AtelierYield, not the escrow behind it.
+     * The vault this adapter serves — JourneymanYield, not the escrow behind it.
      *
      * Named carefully because getting it wrong is a wasted mainnet deploy: the
      * controller is what calls deposit and withdraw, so it is what onlyVault

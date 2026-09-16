@@ -3,7 +3,7 @@ import { test, expect } from "@playwright/test";
 /**
  * THE APP SHELL.
  *
- * Atelier's information architecture is a product decision — one job list, one
+ * Journeyman's information architecture is a product decision — one job list, one
  * freelancer experience, modes only on the client side — and it is the kind of
  * decision that erodes silently. A route quietly 404s after a refactor, a nav
  * entry gets duplicated, a legacy path stops redirecting and a live user's

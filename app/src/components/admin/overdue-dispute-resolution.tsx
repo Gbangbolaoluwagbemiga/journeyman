@@ -76,7 +76,7 @@ export function OverdueDisputeResolution({ onResolved }: Props) {
     setLoading(true);
     try {
       const { ContractService } = await import("@/lib/web3/contract-service");
-      const svc = new ContractService(CONTRACTS.ATELIER_ESCROW);
+      const svc = new ContractService(CONTRACTS.JOURNEYMAN_ESCROW);
       const nextId = await svc.getNextEscrowId();
       const found: OverdueCase[] = [];
 
@@ -132,7 +132,7 @@ export function OverdueDisputeResolution({ onResolved }: Props) {
     setResolving(true);
     try {
       const { ContractService } = await import("@/lib/web3/contract-service");
-      const svc = new ContractService(CONTRACTS.ATELIER_ESCROW);
+      const svc = new ContractService(CONTRACTS.JOURNEYMAN_ESCROW);
       const unreleasedWei = BigInt(Math.round(selected.unreleased * 1e6)); // Convert to 6 decimals
 
       // Validate amounts

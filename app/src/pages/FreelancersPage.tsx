@@ -119,7 +119,7 @@ export default function FreelancersPage() {
     setLoading(true);
     try {
       const { ContractService } = await import("@/lib/web3/contract-service");
-      const svc = new ContractService(CONTRACTS.ATELIER_ESCROW);
+      const svc = new ContractService(CONTRACTS.JOURNEYMAN_ESCROW);
       const nextId = await svc.getNextEscrowId();
 
       // Collect unique freelancer addresses + count their completed escrows

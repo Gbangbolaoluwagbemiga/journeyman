@@ -1,6 +1,6 @@
 import { config } from "../config.js";
 import type { AgentEvent } from "../agent/AgentClient.js";
-import * as atelier from "../web3/atelier.js";
+import * as journeyman from "../web3/journeyman.js";
 
 /**
  * THE OTHER HALF OF EVERY MESSAGE THE AGENT ALREADY SENDS.
@@ -57,7 +57,7 @@ interface WebNotification {
  */
 async function applicantsOf(escrowId: string): Promise<string[]> {
   try {
-    return [...(await atelier.getEscrowApplications(BigInt(escrowId)))];
+    return [...(await journeyman.getEscrowApplications(BigInt(escrowId)))];
   } catch {
     return [];
   }
@@ -78,7 +78,7 @@ function losers(applicants: string[], winner: string | null): string[] {
 /** Resolved from the chain, not the local task store. */
 async function clientOf(escrowId: string): Promise<string | null> {
   try {
-    const esc = await atelier.getEscrow(BigInt(escrowId));
+    const esc = await journeyman.getEscrow(BigInt(escrowId));
     const depositor = (esc as { depositor?: string }).depositor;
     return depositor && depositor !== ZERO ? depositor : null;
   } catch {
@@ -242,7 +242,7 @@ export async function recipientsFor(event: AgentEvent): Promise<WebNotification[
      * the agent was the one approving.
      */
     case "payment_released": {
-      const esc = await atelier.getEscrow(BigInt(id)).catch(() => null);
+      const esc = await journeyman.getEscrow(BigInt(id)).catch(() => null);
       const paid = (esc as { beneficiary?: string } | null)?.beneficiary;
       if (paid && paid !== ZERO) {
         out.push({
@@ -259,7 +259,7 @@ export async function recipientsFor(event: AgentEvent): Promise<WebNotification[
 
     case "revision_requested":
     case "work_rejected": {
-      const esc = await atelier.getEscrow(BigInt(id)).catch(() => null);
+      const esc = await journeyman.getEscrow(BigInt(id)).catch(() => null);
       const who = (esc as { beneficiary?: string } | null)?.beneficiary;
       if (who && who !== ZERO) {
         out.push({
@@ -274,7 +274,7 @@ export async function recipientsFor(event: AgentEvent): Promise<WebNotification[
 
     /* Both sides: the freelancer needs to stop waiting, the client needs to act. */
     case "escalated_to_human": {
-      const esc = await atelier.getEscrow(BigInt(id)).catch(() => null);
+      const esc = await journeyman.getEscrow(BigInt(id)).catch(() => null);
       const who = (esc as { beneficiary?: string } | null)?.beneficiary;
       const client = await clientOf(id);
       if (who && who !== ZERO) {

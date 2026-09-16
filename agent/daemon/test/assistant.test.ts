@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 /**
  * THE ASSISTANT — what it is told, and what it refuses.
  *
- * This is the one place in Atelier where a stranger's text reaches a language
+ * This is the one place in Journeyman where a stranger's text reaches a language
  * model, so the tests that matter are not "does it answer" but "what can the
  * text do". Three things have to hold: the user's words are framed as a
  * question and never as instructions, the model never sees anything private
@@ -17,7 +17,7 @@ vi.mock("../src/groq/chat.js", () => ({
   AssistantUnavailable: class extends Error {},
 }));
 
-const { askAtelier, QuestionRejected } = await import("../src/assistant/ask.js");
+const { askJourneyman, QuestionRejected } = await import("../src/assistant/ask.js");
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -25,7 +25,7 @@ beforeEach(() => {
 });
 
 const ask = (content: string, viewer?: unknown) =>
-  askAtelier([{ role: "user", content }], viewer as never);
+  askJourneyman([{ role: "user", content }], viewer as never);
 
 describe("what the model is told", () => {
   it("frames everything the user typed as a question, not an instruction", async () => {
@@ -40,7 +40,7 @@ describe("what the model is told", () => {
     );
   });
 
-  it("carries Atelier's actual mechanics, so answers are grounded", async () => {
+  it("carries Journeyman's actual mechanics, so answers are grounded", async () => {
     await ask("Can the client take the money back?");
 
     const { system } = groqChat.mock.calls[0][0];
@@ -70,7 +70,7 @@ describe("what it is never told", () => {
     });
 
     const { system } = groqChat.mock.calls[0][0];
-    expect(system).toMatch(/take work on Atelier/i);
+    expect(system).toMatch(/take work on Journeyman/i);
     expect(system).toMatch(/2 job\(s\)/);
     expect(system).not.toMatch(/0x8289/);
     expect(system).not.toMatch(/someone@example.com/);
@@ -96,7 +96,7 @@ describe("what it refuses before reaching the model", () => {
 
   it("will not answer when the last word was its own", async () => {
     await expect(
-      askAtelier([{ role: "assistant", content: "An answer." }]),
+      askJourneyman([{ role: "assistant", content: "An answer." }]),
     ).rejects.toBeInstanceOf(QuestionRejected);
   });
 
@@ -106,7 +106,7 @@ describe("what it refuses before reaching the model", () => {
       content: `turn ${i}`,
     }));
     // Ends on a user turn so it is answerable.
-    await askAtelier([...many, { role: "user", content: "and finally?" }]);
+    await askJourneyman([...many, { role: "user", content: "and finally?" }]);
 
     expect(groqChat.mock.calls[0][0].messages.length).toBeLessThanOrEqual(12);
   });

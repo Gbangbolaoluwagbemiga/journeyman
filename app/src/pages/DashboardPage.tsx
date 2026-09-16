@@ -30,7 +30,7 @@ import {
   FileText,
 } from "lucide-react";
 import { DashboardHeader } from "@/components/dashboard/dashboard-header";
-import { PageActions } from "@/components/atelier/page-actions";
+import { PageActions } from "@/components/journeyman/page-actions";
 import { DashboardStats } from "@/components/dashboard/dashboard-stats";
 import { EscrowCard } from "@/components/dashboard/escrow-card";
 import { DashboardLoading } from "@/components/dashboard/dashboard-loading";
@@ -216,7 +216,7 @@ export default function DashboardPage({ embedded = false }: { embedded?: boolean
           if (allIds.length > 0) {
             try {
               const { ContractService: CS } = await import("@/lib/web3/contract-service");
-              const svc = new CS(CONTRACTS.ATELIER_ESCROW);
+              const svc = new CS(CONTRACTS.JOURNEYMAN_ESCROW);
               const [rpcBatch, milestonesBatch] = await Promise.all([
                 svc.getEscrowsBatch(allIds),
                 svc.getMilestonesBatch(allIds),
@@ -280,7 +280,7 @@ export default function DashboardPage({ embedded = false }: { embedded?: boolean
 
       // ── RPC fallback (multicall) ──────────────────────────────────────────
       const { ContractService } = await import("@/lib/web3/contract-service");
-      const contractService = new ContractService(CONTRACTS.ATELIER_ESCROW);
+      const contractService = new ContractService(CONTRACTS.JOURNEYMAN_ESCROW);
 
       const userEscrows: Escrow[] = [];
       const nowSeconds = Math.floor(Date.now() / 1000);
@@ -617,7 +617,7 @@ export default function DashboardPage({ embedded = false }: { embedded?: boolean
 
       setSubmittingMilestone(`${escrowId}-${milestoneIndex}`);
       const { ContractService } = await import("@/lib/web3/contract-service");
-      const cs = new ContractService(CONTRACTS.ATELIER_ESCROW);
+      const cs = new ContractService(CONTRACTS.JOURNEYMAN_ESCROW);
 
       toast({
         title: "Disputing milestone...",
@@ -683,7 +683,7 @@ export default function DashboardPage({ embedded = false }: { embedded?: boolean
     try {
       setSubmittingMilestone(escrowId);
       const { ContractService: CS2 } = await import("@/lib/web3/contract-service");
-      const svc2 = new CS2(CONTRACTS.ATELIER_ESCROW);
+      const svc2 = new CS2(CONTRACTS.JOURNEYMAN_ESCROW);
       await svc2.startWork(Number(escrowId), wallet.address || "", writeContractAsync);
       toast({
         title: "Work Started",
@@ -730,7 +730,7 @@ export default function DashboardPage({ embedded = false }: { embedded?: boolean
     try {
       setSubmittingMilestone(escrowId);
       const { ContractService } = await import("@/lib/web3/contract-service");
-      const cs = new ContractService(CONTRACTS.ATELIER_ESCROW);
+      const cs = new ContractService(CONTRACTS.JOURNEYMAN_ESCROW);
 
       await cs.disputeMilestone({
         escrow_id: Number(escrowId),
@@ -810,7 +810,7 @@ export default function DashboardPage({ embedded = false }: { embedded?: boolean
       });
 
       const { ContractService: CS3 } = await import("@/lib/web3/contract-service");
-      const svc3 = new CS3(CONTRACTS.ATELIER_ESCROW);
+      const svc3 = new CS3(CONTRACTS.JOURNEYMAN_ESCROW);
       await svc3.approveMilestone({ escrow_id: Number(escrowId), milestone_index: milestoneIndex, depositor: wallet.address }, writeContractAsync);
 
       // Transaction is already confirmed via waitForConfirmation in web3-context
@@ -874,7 +874,7 @@ export default function DashboardPage({ embedded = false }: { embedded?: boolean
   const raiseOverdueDispute = async (escrowId: string, reason: string) => {
     try {
       const { ContractService } = await import("@/lib/web3/contract-service");
-      const cs = new ContractService(CONTRACTS.ATELIER_ESCROW);
+      const cs = new ContractService(CONTRACTS.JOURNEYMAN_ESCROW);
       toast({
         title: "Raising overdue dispute…",
         description: "Please confirm the transaction in your wallet",
@@ -930,7 +930,7 @@ export default function DashboardPage({ embedded = false }: { embedded?: boolean
         description: "Please confirm the transaction in your wallet",
       });
       const { ContractService: CS4 } = await import("@/lib/web3/contract-service");
-      const svc4 = new CS4(CONTRACTS.ATELIER_ESCROW);
+      const svc4 = new CS4(CONTRACTS.JOURNEYMAN_ESCROW);
       await svc4.extendDeadline({
         escrow_id: Number(escrowId),
         extra_seconds: extraDays * 86400,
@@ -960,8 +960,8 @@ export default function DashboardPage({ embedded = false }: { embedded?: boolean
         description: "Please confirm the transaction in your wallet",
       });
       await writeContractAsync({
-        address: CONTRACTS.ATELIER_ESCROW as `0x${string}`,
-        abi: (await import("@/lib/web3/AtelierABI.json")).default.abi,
+        address: CONTRACTS.JOURNEYMAN_ESCROW as `0x${string}`,
+        abi: (await import("@/lib/web3/JourneymanABI.json")).default.abi,
         functionName: "emergencyRefundAfterDeadline",
         args: [BigInt(escrowId)],
       });
@@ -1032,7 +1032,7 @@ export default function DashboardPage({ embedded = false }: { embedded?: boolean
 
       setSubmittingMilestone(`${escrowId}-${milestoneIndex}`);
       const { ContractService } = await import("@/lib/web3/contract-service");
-      const cs = new ContractService(CONTRACTS.ATELIER_ESCROW);
+      const cs = new ContractService(CONTRACTS.JOURNEYMAN_ESCROW);
 
       toast({
         title: "Rejecting milestone...",

@@ -6,7 +6,7 @@ import { MemoryRouter } from "react-router-dom";
 /**
  * THE WAY OUT OF CUSTODY.
  *
- * Atelier holds a managed worker's keys, and says so on every screen that
+ * Journeyman holds a managed worker's keys, and says so on every screen that
  * mentions the wallet. `linkOwnWallet` — the daemon route that hands the
  * account its own keys, history following — has existed since the Telegram
  * bot's /link, and the client function was exported this whole time with
@@ -19,7 +19,7 @@ import { MemoryRouter } from "react-router-dom";
  */
 
 const linkOwnWallet = vi.fn();
-vi.mock("@/lib/atelier/worker", () => ({
+vi.mock("@/lib/journeyman/worker", () => ({
   linkOwnWallet: (i: unknown) => linkOwnWallet(i),
   forgetWorker: vi.fn(),
 }));
@@ -36,7 +36,7 @@ vi.mock("@/contexts/web3-context", () => ({
 const toast = vi.fn();
 vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast }) }));
 
-const { ManagedWalletMenu } = await import("@/components/atelier/managed-wallet-menu");
+const { ManagedWalletMenu } = await import("@/components/journeyman/managed-wallet-menu");
 
 const WORKER = {
   id: "w1",

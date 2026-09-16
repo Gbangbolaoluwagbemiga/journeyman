@@ -2,11 +2,11 @@
 pragma solidity ^0.8.20;
 
 import "forge-std/Script.sol";
-import "../src/Atelier.sol";
+import "../src/Journeyman.sol";
 import "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 /**
- * Deploys Atelier behind an ERC1967 proxy.
+ * Deploys Journeyman behind an ERC1967 proxy.
  *
  * THE ADDRESS THAT MATTERS IS THE PROXY. Everything — the frontend, the Patron
  * daemon, the subgraph, the block explorer link in every job — points at the
@@ -27,7 +27,7 @@ contract DeployScript is Script {
         address feeCollector = vm.addr(deployerPrivateKey);
         uint256 platformFeeBP = 250; // 2.5%
 
-        Atelier implementation = new Atelier();
+        Journeyman implementation = new Journeyman();
 
         // initialize runs through the proxy, in the proxy's storage. Passing it
         // as constructor data makes deploy-and-initialise a single transaction,
@@ -35,12 +35,12 @@ contract DeployScript is Script {
         // for someone else to call initialize first.
         ERC1967Proxy proxy = new ERC1967Proxy(
             address(implementation),
-            abi.encodeCall(Atelier.initialize, (feeCollector, platformFeeBP))
+            abi.encodeCall(Journeyman.initialize, (feeCollector, platformFeeBP))
         );
 
-        console.log("Atelier implementation:", address(implementation));
-        console.log("Atelier PROXY (use this one):", address(proxy));
-        console.log("version:", Atelier(payable(address(proxy))).version());
+        console.log("Journeyman implementation:", address(implementation));
+        console.log("Journeyman PROXY (use this one):", address(proxy));
+        console.log("version:", Journeyman(payable(address(proxy))).version());
 
         vm.stopBroadcast();
     }

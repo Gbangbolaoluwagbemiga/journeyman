@@ -1,4 +1,4 @@
-import atelierAbi from "./atelier-abi.json";
+import journeymanAbi from "./journeyman-abi.json";
 
 export const erc20Abi = [
   {
@@ -51,6 +51,6 @@ export const erc20Abi = [
   },
 ] as const;
 
-// Export the Atelier ABI
-export { atelierAbi };
-export default atelierAbi;
+// Export the Journeyman ABI
+export { journeymanAbi };
+export default journeymanAbi;

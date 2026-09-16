@@ -3,7 +3,7 @@
  *
  * WHY THIS EXISTS
  *
- * Every notification Atelier sends — SSE to the command center, the bell in the
+ * Every notification Journeyman sends — SSE to the command center, the bell in the
  * web app, the Telegram message — hangs off AgentClient's event callback in
  * index.ts. That callback only fires for things the AGENT does.
  *

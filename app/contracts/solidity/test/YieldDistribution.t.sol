@@ -3,7 +3,7 @@ pragma solidity ^0.8.20;
 
 import "./JobManagerBase.t.sol";
 import "./MockYieldAdapter.t.sol";
-import "../src/yield/AtelierYield.sol";
+import "../src/yield/JourneymanYield.sol";
 
 /**
  * WHERE THE MONEY EARNED BY IDLE ESCROW ACTUALLY GOES.
@@ -21,13 +21,13 @@ import "../src/yield/AtelierYield.sol";
  * is a split that never gets switched on.
  */
 contract YieldDistributionTest is JobManagerBase {
-    AtelierYield internal yield_;
+    JourneymanYield internal yield_;
     MockYieldAdapter internal venue;
 
     function setUp() public override {
         super.setUp();
 
-        yield_ = new AtelierYield(address(sf));
+        yield_ = new JourneymanYield(address(sf));
         venue = new MockYieldAdapter(address(usdc), address(yield_));
 
         sf.setYieldController(address(yield_));
@@ -158,7 +158,7 @@ contract YieldDistributionTest is JobManagerBase {
         _finish(id);
 
         yield_.distributeYield(id);
-        vm.expectRevert(AtelierYield.AlreadySettled.selector);
+        vm.expectRevert(JourneymanYield.AlreadySettled.selector);
         yield_.distributeYield(id);
     }
 
@@ -168,7 +168,7 @@ contract YieldDistributionTest is JobManagerBase {
 
         // Still in progress: more of the position may yet unwind, and settling
         // now would pay out a smaller number than the job actually earns.
-        vm.expectRevert(AtelierYield.JobNotFinished.selector);
+        vm.expectRevert(JourneymanYield.JobNotFinished.selector);
         yield_.distributeYield(id);
     }
 
@@ -201,12 +201,12 @@ contract YieldDistributionTest is JobManagerBase {
 
     /// Drive the escrow to a terminal state so distribution is allowed.
     function _finish(uint256 id) internal {
-        Atelier.Escrow memory esc = sf.getEscrow(id);
-        if (esc.status == Atelier.EscrowStatus.Released) return;
+        Journeyman.Escrow memory esc = sf.getEscrow(id);
+        if (esc.status == Journeyman.EscrowStatus.Released) return;
 
-        Atelier.Milestone[] memory ms = sf.getMilestones(id);
+        Journeyman.Milestone[] memory ms = sf.getMilestones(id);
         for (uint256 i; i < ms.length; ++i) {
-            if (ms[i].status == Atelier.MilestoneStatus.NotStarted && ms[i].amount > 0) {
+            if (ms[i].status == Journeyman.MilestoneStatus.NotStarted && ms[i].amount > 0) {
                 _submit(id, i);
                 vm.prank(client);
                 sf.approveMilestone(id, i);

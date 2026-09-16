@@ -51,7 +51,7 @@ export function ArbiterManagement({ onArbiterAdded, onArbiterRemoved }: ArbiterM
     setLoading(true);
     try {
       const { ContractService } = await import("@/lib/web3/contract-service");
-      const svc = new ContractService(CONTRACTS.ATELIER_ESCROW);
+      const svc = new ContractService(CONTRACTS.JOURNEYMAN_ESCROW);
       const arbiterList = await svc.getAuthorizedArbiters();
       setArbiters(arbiterList);
     } catch (error) {
@@ -88,7 +88,7 @@ export function ArbiterManagement({ onArbiterAdded, onArbiterRemoved }: ArbiterM
     setIsAdding(true);
     try {
       const { ContractService } = await import("@/lib/web3/contract-service");
-      const svc = new ContractService(CONTRACTS.ATELIER_ESCROW);
+      const svc = new ContractService(CONTRACTS.JOURNEYMAN_ESCROW);
       
       await svc.authorizeArbiter(newArbiterAddress, writeContractAsync);
 
@@ -122,7 +122,7 @@ export function ArbiterManagement({ onArbiterAdded, onArbiterRemoved }: ArbiterM
     setRemovingArbiter(arbiterToRemove);
     try {
       const { ContractService } = await import("@/lib/web3/contract-service");
-      const svc = new ContractService(CONTRACTS.ATELIER_ESCROW);
+      const svc = new ContractService(CONTRACTS.JOURNEYMAN_ESCROW);
       
       await svc.removeArbiter(arbiterToRemove, writeContractAsync);
 

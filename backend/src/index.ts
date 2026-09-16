@@ -19,9 +19,9 @@ const apiSecret = process.env.API_SECRET;
 
 // Build a CORS origin matcher that supports:
 //  - FRONTEND_URL: comma-separated list of exact origins, e.g.
-//      https://atelier-arc.vercel.app,https://my-preview.vercel.app
+//      https://journeyman-arc.vercel.app,https://my-preview.vercel.app
 //  - FRONTEND_URL_PATTERN: a regex string to allow preview deployments, e.g.
-//      https://atelier.*\.vercel\.app
+//      https://journeyman.*\.vercel\.app
 //  - If neither is set, allow all origins (open for local dev).
 const rawOrigins = (process.env.FRONTEND_URL ?? "")
   .split(",")
@@ -114,7 +114,7 @@ app.use(generalLimiter);
  */
 app.get("/", (_req, res) => {
   res.json({
-    service: "Atelier API",
+    service: "Journeyman API",
     what: "Notifications, messaging, cover letters and file uploads for atelier-job.vercel.app. The escrow itself lives on Arc, not here.",
     endpoints: {
       health: "/health",
@@ -123,7 +123,7 @@ app.get("/", (_req, res) => {
       applications: "/v1/applications/:escrowId",
       analytics: "/v1/analytics/platform",
     },
-    source: "https://github.com/Gbangbolaoluwagbemiga/Atelier",
+    source: "https://github.com/Gbangbolaoluwagbemiga/Journeyman",
   });
 });
 
@@ -181,10 +181,10 @@ app.use("/v1/disputes", auth, disputesRouter);
  */
 if (!process.env.VERCEL) {
   app.listen(port, () => {
-    console.log(`atelier-api listening on :${port}`);
+    console.log(`journeyman-api listening on :${port}`);
     if (!apiSecret) {
       console.warn(
-        "[atelier-api] API_SECRET is unset; /v1 routes are open (set API_SECRET for production)",
+        "[journeyman-api] API_SECRET is unset; /v1 routes are open (set API_SECRET for production)",
       );
     }
   });

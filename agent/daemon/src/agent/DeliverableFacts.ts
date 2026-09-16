@@ -153,7 +153,7 @@ export function isAudio(mediaType: string): boolean {
 /**
  * Read a delivered WEB PAGE.
  *
- * "Atelier has no vision credit so it couldn't open your site" was true and
+ * "Journeyman has no vision credit so it couldn't open your site" was true and
  * beside the point: a web page is text. The reviewer was told a live URL
  * "resolves but its contents are not readable" and then judged the freelancer's
  * sentence about it — for a build-me-a-website brief, which is the one kind of
@@ -261,7 +261,7 @@ export async function readGitHubRepo(url: string): Promise<{ summary: string; te
   const m = url.match(/^https?:\/\/(?:www\.)?github\.com\/([\w.-]+)\/([\w.-]+?)(?:\.git)?(?:[/#?]|$)/i);
   if (!m) return null;
   const [, owner, repo] = m;
-  const headers = { Accept: "application/vnd.github+json", "User-Agent": "AtelierBot/1.0" };
+  const headers = { Accept: "application/vnd.github+json", "User-Agent": "JourneymanBot/1.0" };
 
   try {
     const metaRes = await fetch(`https://api.github.com/repos/${owner}/${repo}`, { headers, signal: AbortSignal.timeout(10_000) });

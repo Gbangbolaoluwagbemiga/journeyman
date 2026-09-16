@@ -5,7 +5,7 @@ import App from "./App.tsx";
 import { WalletProvider } from "./providers/WalletProvider.tsx";
 import { Web3Provider } from "./contexts/web3-context";
 import { DelegationProvider } from "./contexts/delegation-context";
-import { NotificationProvider as AtelierNotificationProvider } from "./contexts/notification-context";
+import { NotificationProvider as JourneymanNotificationProvider } from "./contexts/notification-context";
 import { ThemeProvider } from "./components/theme-provider";
 import { BrowserRouter } from "react-router-dom";
 
@@ -16,11 +16,11 @@ createRoot(document.getElementById("root") as HTMLElement).render(
       <WalletProvider>
         <Web3Provider>
           <DelegationProvider>
-            <AtelierNotificationProvider>
+            <JourneymanNotificationProvider>
               <BrowserRouter>
                 <App />
               </BrowserRouter>
-            </AtelierNotificationProvider>
+            </JourneymanNotificationProvider>
           </DelegationProvider>
         </Web3Provider>
       </WalletProvider>

@@ -14,7 +14,7 @@ import { defineConfig, devices } from "@playwright/test";
  *
  * Not covered here, deliberately: anything requiring a connected wallet.
  * Automating a wallet extension is a large amount of fragile machinery, and the
- * contract-level journeys in contracts/solidity/test/AtelierE2E.t.sol already
+ * contract-level journeys in contracts/solidity/test/JourneymanE2E.t.sol already
  * walk every on-chain path end to end against a real proxy. What is left for the
  * browser is everything up to the signature prompt.
  */

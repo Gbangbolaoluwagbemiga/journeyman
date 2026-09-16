@@ -9,7 +9,7 @@
 // Why this exists at all: everything a WORKER does — joining, browsing, applying,
 // submitting, withdrawing — is completely LLM-free. Someone can get a real wallet
 // and put a real application on-chain with the model entirely dead. What needs the
-// model is Atelier's RESPONSE: scoring applicants, hiring, reviewing work.
+// model is Journeyman's RESPONSE: scoring applicants, hiring, reviewing work.
 //
 // So the failure isn't that the door is shut. It's that a person walks through it,
 // is told "I'll message you either way", and then hears nothing. Telling them the

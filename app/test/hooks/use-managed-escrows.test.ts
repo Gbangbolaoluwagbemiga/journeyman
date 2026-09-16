@@ -24,7 +24,7 @@ import { renderHook, act } from "@testing-library/react";
 
 const fetchManagedEscrowIds = vi.fn();
 
-vi.mock("@/lib/atelier/agent-api", () => ({
+vi.mock("@/lib/journeyman/agent-api", () => ({
   AUTOPILOT_CONFIGURED: true,
   fetchManagedEscrowIds,
 }));

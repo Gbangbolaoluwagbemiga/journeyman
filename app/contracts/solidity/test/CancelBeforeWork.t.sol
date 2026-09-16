@@ -3,7 +3,7 @@ pragma solidity ^0.8.20;
 
 import "./JobManagerBase.t.sol";
 import "./MockYieldAdapter.t.sol";
-import "../src/yield/AtelierYield.sol";
+import "../src/yield/JourneymanYield.sol";
 
 /**
  * WHILE NOBODY HAS STARTED, THE MONEY IS STILL THE CLIENT'S.
@@ -22,12 +22,12 @@ import "../src/yield/AtelierYield.sol";
  * cash it had lent out.
  */
 contract CancelBeforeWorkTest is JobManagerBase {
-    AtelierYield internal yield_;
+    JourneymanYield internal yield_;
     MockYieldAdapter internal venue;
 
     function setUp() public override {
         super.setUp();
-        yield_ = new AtelierYield(address(sf));
+        yield_ = new JourneymanYield(address(sf));
         venue = new MockYieldAdapter(address(usdc), address(yield_));
         sf.setYieldController(address(yield_));
         yield_.setYieldAdapter(address(usdc), address(venue));
@@ -94,21 +94,21 @@ contract CancelBeforeWorkTest is JobManagerBase {
         sf.startWork(id);
 
         vm.prank(client);
-        vm.expectRevert(Atelier.CannotCancelAssignedJob.selector);
+        vm.expectRevert(Journeyman.CannotCancelAssignedJob.selector);
         sf.cancelJob(id);
     }
 
     function test_onlyTheDepositorMayCancel() public {
         uint256 id = _assignedAtCreation();
         vm.prank(outsider);
-        vm.expectRevert(Atelier.Unauthorized.selector);
+        vm.expectRevert(Journeyman.Unauthorized.selector);
         sf.cancelJob(id);
     }
 
     function test_theNamedFreelancerCannotCancelTheJob() public {
         uint256 id = _assignedAtCreation();
         vm.prank(worker);
-        vm.expectRevert(Atelier.Unauthorized.selector);
+        vm.expectRevert(Journeyman.Unauthorized.selector);
         sf.cancelJob(id);
     }
 
@@ -189,7 +189,7 @@ contract DeclineAssignmentTest is JobManagerBase {
         vm.prank(worker);
         sf.declineAssignment(id);
 
-        Atelier.Escrow memory esc = sf.getEscrow(id);
+        Journeyman.Escrow memory esc = sf.getEscrow(id);
         assertEq(esc.beneficiary, address(0), "still named on a job they declined");
     }
 
@@ -205,10 +205,10 @@ contract DeclineAssignmentTest is JobManagerBase {
         vm.prank(worker);
         sf.declineAssignment(id);
 
-        Atelier.Escrow memory esc = sf.getEscrow(id);
+        Journeyman.Escrow memory esc = sf.getEscrow(id);
         assertFalse(esc.isOpenJob, "put itself on the board without being asked");
         assertEq(usdc.balanceOf(address(sf)), held, "money moved on a decline");
-        assertEq(uint8(esc.status), uint8(Atelier.EscrowStatus.Pending));
+        assertEq(uint8(esc.status), uint8(Journeyman.EscrowStatus.Pending));
     }
 
     /* ─────────── the client's three answers ─────────── */
@@ -266,7 +266,7 @@ contract DeclineAssignmentTest is JobManagerBase {
         sf.declineAssignment(id);
 
         vm.prank(outsider);
-        vm.expectRevert(Atelier.Unauthorized.selector);
+        vm.expectRevert(Journeyman.Unauthorized.selector);
         sf.reopenJob(id);
     }
 
@@ -275,7 +275,7 @@ contract DeclineAssignmentTest is JobManagerBase {
     function test_onlyTheNamedFreelancerMayDecline() public {
         uint256 id = _assignedAtCreation();
         vm.prank(outsider);
-        vm.expectRevert(Atelier.Unauthorized.selector);
+        vm.expectRevert(Journeyman.Unauthorized.selector);
         sf.declineAssignment(id);
     }
 
@@ -284,7 +284,7 @@ contract DeclineAssignmentTest is JobManagerBase {
     function test_theClientCannotDeclineForThem() public {
         uint256 id = _assignedAtCreation();
         vm.prank(client);
-        vm.expectRevert(Atelier.Unauthorized.selector);
+        vm.expectRevert(Journeyman.Unauthorized.selector);
         sf.declineAssignment(id);
     }
 
@@ -294,7 +294,7 @@ contract DeclineAssignmentTest is JobManagerBase {
         sf.startWork(id);
 
         vm.prank(worker);
-        vm.expectRevert(Atelier.WorkAlreadyStarted.selector);
+        vm.expectRevert(Journeyman.WorkAlreadyStarted.selector);
         sf.declineAssignment(id);
     }
 
@@ -304,7 +304,7 @@ contract DeclineAssignmentTest is JobManagerBase {
         sf.declineAssignment(id);
 
         vm.prank(worker);
-        vm.expectRevert(Atelier.Unauthorized.selector);
+        vm.expectRevert(Journeyman.Unauthorized.selector);
         sf.declineAssignment(id);
     }
 }

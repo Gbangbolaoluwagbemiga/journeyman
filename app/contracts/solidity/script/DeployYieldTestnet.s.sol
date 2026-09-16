@@ -2,8 +2,8 @@
 pragma solidity ^0.8.20;
 
 import "forge-std/Script.sol";
-import "../src/Atelier.sol";
-import "../src/yield/AtelierYield.sol";
+import "../src/Journeyman.sol";
+import "../src/yield/JourneymanYield.sol";
 import "../src/yield/SponsoredVault.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
@@ -39,7 +39,7 @@ contract DeployYieldTestnetScript is Script {
         /*
          * REFUSE TO SWAP A CONTROLLER THAT IS STILL HOLDING MONEY.
          *
-         * AtelierYield is not upgradeable, so replacing it means pointing the
+         * JourneymanYield is not upgradeable, so replacing it means pointing the
          * escrow at a fresh contract — and the outgoing one keeps its
          * `escrowDeployed` book and its position in the venue. The escrow can
          * then only be told about obligations by the NEW controller, which
@@ -55,17 +55,17 @@ contract DeployYieldTestnetScript is Script {
          * So: unwind first, swap second. Approving the last milestone on every
          * opted-in escrow does it, and this refuses to run until it has been.
          */
-        address current = address(Atelier(proxy).yieldController());
+        address current = address(Journeyman(proxy).yieldController());
         if (current != address(0)) {
             address heldToken = token;
-            uint256 stillOut = AtelierYield(payable(current)).deployedAssets(heldToken);
+            uint256 stillOut = JourneymanYield(payable(current)).deployedAssets(heldToken);
             require(stillOut == 0, "old controller still has capital deployed; unwind it first");
         }
 
         vm.startBroadcast(pk);
 
-        AtelierYield controller = new AtelierYield(proxy);
-        Atelier(proxy).setYieldController(address(controller));
+        JourneymanYield controller = new JourneymanYield(proxy);
+        Journeyman(proxy).setYieldController(address(controller));
 
         SponsoredVault venue = new SponsoredVault(token, address(controller));
         controller.setYieldAdapter(token, address(venue));
@@ -92,7 +92,7 @@ contract DeployYieldTestnetScript is Script {
 
         vm.stopBroadcast();
 
-        console.log("AtelierYield:     ", address(controller));
+        console.log("JourneymanYield:     ", address(controller));
         console.log("SponsoredVault:   ", address(venue));
         console.log("attached to:      ", proxy);
         console.log("token:            ", token);

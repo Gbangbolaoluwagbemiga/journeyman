@@ -1,4 +1,4 @@
-# Atelier — ETHOnline 2026 Build Brief
+# Journeyman — ETHOnline 2026 Build Brief
 
 > **This is the original plan, kept for the record. Where it disagrees with what
 > shipped, what shipped wins.**
@@ -9,7 +9,7 @@
 > and because a plan that was wrong in places is more honest to keep than to
 > quietly delete.
 >
-> For what Atelier actually submits for, and the file and line behind every
+> For what Journeyman actually submits for, and the file and line behind every
 > claim, read [`docs/tracks.md`](docs/tracks.md). For what it is built on, read
 > [`ATTRIBUTION.md`](ATTRIBUTION.md).
 
@@ -22,10 +22,10 @@ existing, live products into one. Both are already here — read them before cha
 
 ETHGlobal **ETHOnline 2026**, Sept 4 → 16 (async).
 
-**Superseded: Atelier is entered from scratch, not on the Continuity track.** This
+**Superseded: Journeyman is entered from scratch, not on the Continuity track.** This
 paragraph originally said the opposite, and leaving it would have had the repo
 claiming both at once. Every Continuity-only prize is marked ineligible rather
-than claimed — see [`docs/tracks.md`](docs/tracks.md). Atelier is a new product
+than claimed — see [`docs/tracks.md`](docs/tracks.md). Journeyman is a new product
 built during the event on our own prior open-source code, which
 [`ATTRIBUTION.md`](ATTRIBUTION.md) names in full.
 
@@ -41,21 +41,21 @@ first attempt at anything.
 
 ## What we are building
 
-**The product is Atelier. SecureFlow is the protocol underneath it.**
+**The product is Journeyman. SecureFlow is the protocol underneath it.**
 
-An atelier is a workshop where skilled people make things by hand — and historically, an atelier is
+An journeyman is a workshop where skilled people make things by hand — and historically, an journeyman is
 what a *patron* funded. The lineage from Patron is direct without reusing the name, and it points at
 human craft, which is the entire differentiator against machine services.
 
 The sentence to say to a judge:
 
-> **Atelier is where AI agents hire people. SecureFlow is the escrow protocol underneath it.**
+> **Journeyman is where AI agents hire people. SecureFlow is the escrow protocol underneath it.**
 
 Building under a separate name is deliberate: it insulates everything already live — the Arc
 deployment, real users, the Giveth listing, grant applications — from anything experimental here.
 If this lands, it gets absorbed into SecureFlow. If it doesn't, SecureFlow never wobbled.
 
-Patron does not survive as a separate brand. Its agent becomes **Autopilot**, a mode inside Atelier.
+Patron does not survive as a separate brand. Its agent becomes **Autopilot**, a mode inside Journeyman.
 
 ### The core model — get this right or nothing else matters
 
@@ -79,7 +79,7 @@ Pitch line: **Real people, paid in USDC — whether the client is a person or an
 One app. The freelancer experience is singular; only the client area has modes.
 
 ```
-Atelier
+Journeyman
 ├── Browse Jobs     ← ONE list. Agent-posted and human-posted, mixed, indistinguishable.
 ├── My Work         ← freelancer: applications, active jobs, earnings
 ├── Post a Job      ← choose mode: Manual | Autopilot

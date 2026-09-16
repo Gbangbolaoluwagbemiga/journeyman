@@ -8,7 +8,7 @@ import {
 } from "viem";
 import { arcTestnet } from "@/providers/WalletProvider";
 import { CONTRACTS } from "./config";
-import AtelierABI from "./AtelierABI.json";
+import JourneymanABI from "./JourneymanABI.json";
 
 /** wagmi writeContractAsync — typed as any to stay compatible across wagmi versions */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -17,7 +17,7 @@ export type WagmiWrite = (args: any) => Promise<`0x${string}`>;
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as const;
 
 /**
- * The slice of AtelierYield the web app touches.
+ * The slice of JourneymanYield the web app touches.
  *
  * Hand-written rather than generated because the controller is deployed
  * separately from the escrow proxy and is not in the synced ABI — and because
@@ -55,7 +55,7 @@ export class ContractService {
   private contract: any; // typed loosely to avoid viem generic constraints
   readonly addr: Address;
 
-  constructor(contractAddress: string = CONTRACTS.ATELIER_ESCROW) {
+  constructor(contractAddress: string = CONTRACTS.JOURNEYMAN_ESCROW) {
     this.addr = contractAddress as Address;
     this.client = createPublicClient({
       chain: arcTestnet,
@@ -63,7 +63,7 @@ export class ContractService {
     });
     this.contract = getContract({
       address: this.addr,
-      abi: AtelierABI.abi,
+      abi: JourneymanABI.abi,
       client: this.client,
     });
   }
@@ -106,7 +106,7 @@ export class ContractService {
     try {
       const calls = ids.map((id) => ({
         address: this.addr,
-        abi: AtelierABI.abi as any,
+        abi: JourneymanABI.abi as any,
         functionName: "getEscrow" as const,
         args: [BigInt(id)] as const,
       }));
@@ -155,7 +155,7 @@ export class ContractService {
     try {
       const calls = ids.map((id) => ({
         address: this.addr,
-        abi: AtelierABI.abi as any,
+        abi: JourneymanABI.abi as any,
         functionName: "getMilestones" as const,
         args: [BigInt(id)] as const,
       }));
@@ -204,7 +204,7 @@ export class ContractService {
     );
     const log = (msg: string, extra?: unknown) =>
       // eslint-disable-next-line no-console
-      console.warn(`[atelier:milestone-recovery] esc=${escrowId} ${msg}`, extra ?? "");
+      console.warn(`[journeyman:milestone-recovery] esc=${escrowId} ${msg}`, extra ?? "");
     try {
       // The public drpc RPC caps eth_getLogs ranges aggressively (sometimes
       // as little as 1k blocks). Walk backwards in small chunks and fall back
@@ -249,7 +249,7 @@ export class ContractService {
         return null;
       }
       const decoded = decodeFunctionData({
-        abi: AtelierABI.abi,
+        abi: JourneymanABI.abi,
         data: tx.input,
       });
       if (decoded.functionName !== "createEscrow") {
@@ -349,7 +349,7 @@ export class ContractService {
     const results = await this.client.multicall({
       contracts: ids.map((id) => ({
         address: this.addr,
-        abi: AtelierABI.abi as any,
+        abi: JourneymanABI.abi as any,
         functionName: "jobManager" as const,
         args: [BigInt(id)] as const,
       })),
@@ -456,7 +456,7 @@ export class ContractService {
 
         // Parse the events
         const parsedLogs = parseEventLogs({
-          abi: AtelierABI.abi,
+          abi: JourneymanABI.abi,
           logs: logs as any[]
         });
 
@@ -517,7 +517,7 @@ export class ContractService {
 
               const { decodeFunctionData } = await import('viem');
               const decoded = decodeFunctionData({
-                abi: AtelierABI.abi,
+                abi: JourneymanABI.abi,
                 data: tx.input
               });
 
@@ -717,7 +717,7 @@ export class ContractService {
    * Record the client's answer to the fee question. Theirs alone, and once.
    *
    * The contract refuses a second answer and refuses any answer at all once a
-   * freelancer is hired — see AtelierYield.setYieldOptIn. This is the surface;
+   * freelancer is hired — see JourneymanYield.setYieldOptIn. This is the surface;
    * the rule is not enforced here, because a rule enforced in a React component
    * is not a rule.
    */
@@ -768,11 +768,11 @@ export class ContractService {
     jobCreationPaused: boolean;
     userMessage: string;
   }> {
-    if (!CONTRACTS.ATELIER_ESCROW) {
+    if (!CONTRACTS.JOURNEYMAN_ESCROW) {
       return {
         ok: false,
         jobCreationPaused: true,
-        userMessage: "Contract address not configured. Set VITE_ATELIER_CONTRACT_ADDRESS in your .env file.",
+        userMessage: "Contract address not configured. Set VITE_JOURNEYMAN_CONTRACT_ADDRESS in your .env file.",
       };
     }
     try {
@@ -784,14 +784,14 @@ export class ContractService {
       };
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Unknown error";
-      return { ok: false, jobCreationPaused: true, userMessage: `Cannot reach the Atelier contract: ${msg}` };
+      return { ok: false, jobCreationPaused: true, userMessage: `Cannot reach the Journeyman contract: ${msg}` };
     }
   }
 
   /* ─── WRITE METHODS (require wagmi writeContractAsync) ─── */
 
   async startWork(escrowId: number, _from: string, write: WagmiWrite): Promise<`0x${string}`> {
-    return write({ address: this.addr, abi: AtelierABI.abi, functionName: "startWork", args: [BigInt(escrowId)] });
+    return write({ address: this.addr, abi: JourneymanABI.abi, functionName: "startWork", args: [BigInt(escrowId)] });
   }
 
   async extendDeadline(
@@ -801,7 +801,7 @@ export class ContractService {
     const additionalDays = BigInt(Math.max(1, Math.round(params.extra_seconds / 86400)));
     return write({
       address: this.addr,
-      abi: AtelierABI.abi,
+      abi: JourneymanABI.abi,
       functionName: "extendDeadline",
       args: [BigInt(params.escrow_id), additionalDays],
     });
@@ -813,7 +813,7 @@ export class ContractService {
   ): Promise<`0x${string}`> {
     return write({
       address: this.addr,
-      abi: AtelierABI.abi,
+      abi: JourneymanABI.abi,
       functionName: "submitMilestone",
       args: [BigInt(params.escrow_id), BigInt(params.milestone_index), params.description],
     });
@@ -825,7 +825,7 @@ export class ContractService {
   ): Promise<`0x${string}`> {
     return write({
       address: this.addr,
-      abi: AtelierABI.abi,
+      abi: JourneymanABI.abi,
       functionName: "approveMilestone",
       args: [BigInt(params.escrow_id), BigInt(params.milestone_index)],
     });
@@ -837,7 +837,7 @@ export class ContractService {
   ): Promise<`0x${string}`> {
     return write({
       address: this.addr,
-      abi: AtelierABI.abi,
+      abi: JourneymanABI.abi,
       functionName: "rejectMilestone",
       args: [BigInt(params.escrow_id), BigInt(params.milestone_index), params.reason],
     });
@@ -849,7 +849,7 @@ export class ContractService {
   ): Promise<`0x${string}`> {
     return write({
       address: this.addr,
-      abi: AtelierABI.abi,
+      abi: JourneymanABI.abi,
       functionName: "disputeMilestone",
       args: [BigInt(params.escrow_id), BigInt(params.milestone_index), params.reason],
     });
@@ -861,7 +861,7 @@ export class ContractService {
   ): Promise<`0x${string}`> {
     return write({
       address: this.addr,
-      abi: AtelierABI.abi,
+      abi: JourneymanABI.abi,
       functionName: "raiseOverdueDispute",
       args: [BigInt(params.escrow_id), params.reason],
     });
@@ -873,7 +873,7 @@ export class ContractService {
   ): Promise<`0x${string}`> {
     return write({
       address: this.addr,
-      abi: AtelierABI.abi,
+      abi: JourneymanABI.abi,
       functionName: "acceptFreelancer",
       args: [BigInt(params.escrow_id), params.freelancer as `0x${string}`],
     });
@@ -901,7 +901,7 @@ export class ContractService {
   async reopenJob(escrowId: number, write: WagmiWrite): Promise<`0x${string}`> {
     return write({
       address: this.addr,
-      abi: AtelierABI.abi,
+      abi: JourneymanABI.abi,
       functionName: "reopenJob",
       args: [BigInt(escrowId)],
     });
@@ -917,7 +917,7 @@ export class ContractService {
   async declineAssignment(escrowId: number, write: WagmiWrite): Promise<`0x${string}`> {
     return write({
       address: this.addr,
-      abi: AtelierABI.abi,
+      abi: JourneymanABI.abi,
       functionName: "declineAssignment",
       args: [BigInt(escrowId)],
     });
@@ -929,7 +929,7 @@ export class ContractService {
   ): Promise<`0x${string}`> {
     return write({
       address: this.addr,
-      abi: AtelierABI.abi,
+      abi: JourneymanABI.abi,
       functionName: "setJobManager",
       args: [BigInt(params.escrow_id), params.manager as `0x${string}`],
     });
@@ -948,7 +948,7 @@ export class ContractService {
   ): Promise<`0x${string}`> {
     return write({
       address: this.addr,
-      abi: AtelierABI.abi,
+      abi: JourneymanABI.abi,
       functionName: "revokeJobManager",
       args: [BigInt(escrowId)],
     });
@@ -960,7 +960,7 @@ export class ContractService {
   ): Promise<`0x${string}`> {
     return write({
       address: this.addr,
-      abi: AtelierABI.abi,
+      abi: JourneymanABI.abi,
       functionName: "applyToJob",
       args: [BigInt(params.escrow_id), params.cover_letter, BigInt(params.proposed_timeline)],
     });
@@ -969,7 +969,7 @@ export class ContractService {
   async submitRating(escrowId: number, score: number, review: string, write: WagmiWrite): Promise<`0x${string}`> {
     return write({
       address: this.addr,
-      abi: AtelierABI.abi,
+      abi: JourneymanABI.abi,
       functionName: "submitRating",
       args: [BigInt(escrowId), score, review],
     });
@@ -978,7 +978,7 @@ export class ContractService {
   async removeArbiter(arbiter: string, write: WagmiWrite): Promise<`0x${string}`> {
     return write({
       address: this.addr,
-      abi: AtelierABI.abi,
+      abi: JourneymanABI.abi,
       functionName: "revokeArbiter",
       args: [arbiter as `0x${string}`],
     });
@@ -987,7 +987,7 @@ export class ContractService {
   async authorizeArbiter(arbiter: string, write: WagmiWrite): Promise<`0x${string}`> {
     return write({
       address: this.addr,
-      abi: AtelierABI.abi,
+      abi: JourneymanABI.abi,
       functionName: "authorizeArbiter",
       args: [arbiter as `0x${string}`],
     });
@@ -999,7 +999,7 @@ export class ContractService {
   ): Promise<`0x${string}`> {
     return write({
       address: this.addr,
-      abi: AtelierABI.abi,
+      abi: JourneymanABI.abi,
       functionName: "submitEvidence",
       args: [BigInt(params.escrow_id), BigInt(params.milestone_index), params.cid],
     });
@@ -1008,7 +1008,7 @@ export class ContractService {
   async whitelistToken(token: string, write: WagmiWrite): Promise<`0x${string}`> {
     return write({
       address: this.addr,
-      abi: AtelierABI.abi,
+      abi: JourneymanABI.abi,
       functionName: "whitelistToken",
       args: [token as `0x${string}`],
     });
@@ -1024,7 +1024,7 @@ export class ContractService {
   async delistToken(token: string, write: WagmiWrite): Promise<`0x${string}`> {
     return write({
       address: this.addr,
-      abi: AtelierABI.abi,
+      abi: JourneymanABI.abi,
       functionName: "delistToken",
       args: [token as `0x${string}`],
     });
@@ -1034,7 +1034,7 @@ export class ContractService {
     if (feeBP < 0 || feeBP > 10000) throw new Error("Fee must be between 0 and 100%");
     return write({
       address: this.addr,
-      abi: AtelierABI.abi,
+      abi: JourneymanABI.abi,
       functionName: "setPlatformFee",
       args: [BigInt(feeBP)],
     });
@@ -1049,7 +1049,7 @@ export class ContractService {
   async withdrawFees(token: string, write: WagmiWrite): Promise<`0x${string}`> {
     return write({
       address: this.addr,
-      abi: AtelierABI.abi,
+      abi: JourneymanABI.abi,
       functionName: "withdrawFees",
       args: [token as `0x${string}`],
     });
@@ -1058,7 +1058,7 @@ export class ContractService {
   async deleteEscrow(escrowId: number, write: WagmiWrite): Promise<`0x${string}`> {
     return write({
       address: this.addr,
-      abi: AtelierABI.abi,
+      abi: JourneymanABI.abi,
       functionName: "deleteEscrow",
       args: [BigInt(escrowId)],
     });
@@ -1067,7 +1067,7 @@ export class ContractService {
   async emergencyRefundAfterDeadline(escrowId: number, _from: string, write: WagmiWrite): Promise<`0x${string}`> {
     return write({
       address: this.addr,
-      abi: AtelierABI.abi,
+      abi: JourneymanABI.abi,
       functionName: "emergencyRefundAfterDeadline",
       args: [BigInt(escrowId)],
     });
@@ -1088,7 +1088,7 @@ export class ContractService {
   ): Promise<`0x${string}`> {
     return write({
       address: this.addr,
-      abi: AtelierABI.abi,
+      abi: JourneymanABI.abi,
       functionName: "cancelJob",
       args: [BigInt(params.escrow_id)],
     });
@@ -1213,7 +1213,7 @@ export class ContractService {
 
     return write({
       address: this.addr,
-      abi: AtelierABI.abi,
+      abi: JourneymanABI.abi,
       functionName: "setMilestones",
       args: [BigInt(params.escrow_id), amounts, params.milestones.map((m) => m.requirements)],
       value: isNative ? deposit : 0n,
@@ -1263,7 +1263,7 @@ export class ContractService {
 
     return write({
       address: this.addr,
-      abi: AtelierABI.abi,
+      abi: JourneymanABI.abi,
       functionName: "addJobFunds",
       args: [BigInt(params.escrow_id), amountWei, BigInt(params.milestone_index)],
       value: isNativeToken ? deposit : 0n,
@@ -1278,7 +1278,7 @@ export class ContractService {
     const amountWei = BigInt(Math.floor(parseFloat(params.withdraw_amount) * 1e6));
     return write({
       address: this.addr,
-      abi: AtelierABI.abi,
+      abi: JourneymanABI.abi,
       functionName: "withdrawJobFunds",
       args: [BigInt(params.escrow_id), amountWei, BigInt(params.milestone_index)],
     });
@@ -1299,7 +1299,7 @@ export class ContractService {
     const amountWei = BigInt(Math.floor(parseFloat(params.proposed_amount) * 1e18));
     return write({
       address: this.addr,
-      abi: AtelierABI.abi,
+      abi: JourneymanABI.abi,
       functionName: "proposeMilestoneChange",
       args: [
         BigInt(params.escrow_id),
@@ -1316,7 +1316,7 @@ export class ContractService {
   ): Promise<`0x${string}`> {
     return write({
       address: this.addr,
-      abi: AtelierABI.abi,
+      abi: JourneymanABI.abi,
       functionName: "approveMilestoneProposal",
       args: [BigInt(params.escrow_id), BigInt(params.milestone_index)],
     });
@@ -1328,7 +1328,7 @@ export class ContractService {
   ): Promise<`0x${string}`> {
     return write({
       address: this.addr,
-      abi: AtelierABI.abi,
+      abi: JourneymanABI.abi,
       functionName: "rejectMilestoneProposal",
       args: [BigInt(params.escrow_id), BigInt(params.milestone_index)],
     });
@@ -1374,7 +1374,7 @@ export class ContractService {
     const milestoneAmount = BigInt((milestones as any[])[idx]?.amount ?? 0);
     return write({
       address: this.addr,
-      abi: AtelierABI.abi,
+      abi: JourneymanABI.abi,
       functionName: "resolveDispute",
       args: [BigInt(params.escrow_id), BigInt(idx), 0n, milestoneAmount],
     });
@@ -1392,7 +1392,7 @@ export class ContractService {
     const clientAmount = milestoneAmount - freelancerAmount;
     return write({
       address: this.addr,
-      abi: AtelierABI.abi,
+      abi: JourneymanABI.abi,
       functionName: "resolveDispute",
       args: [BigInt(params.escrow_id), BigInt(idx), freelancerAmount, clientAmount, params.reason],
     });

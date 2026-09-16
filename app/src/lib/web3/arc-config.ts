@@ -15,11 +15,11 @@ export function getCurrentNetwork() {
 }
 
 export const CONTRACTS = {
-  ATELIER_ESCROW: (
+  JOURNEYMAN_ESCROW: (
     /* The old VITE_SECUREFLOW_* name is still read as a fallback. A deployment
        that already has it set should not break the moment the constant is
        renamed in source — the value is the same address either way. */
-    import.meta.env.VITE_ATELIER_CONTRACT_ADDRESS ??
+    import.meta.env.VITE_JOURNEYMAN_CONTRACT_ADDRESS ??
     import.meta.env.VITE_SECUREFLOW_CONTRACT_ADDRESS ??
     ""
   ).trim() as `0x${string}` | "",

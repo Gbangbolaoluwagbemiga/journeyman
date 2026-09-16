@@ -39,7 +39,7 @@ vi.mock("../src/store.js", () => ({
   listWorkers: () => [],
 }));
 
-vi.mock("../src/web3/atelier.js", () => ({
+vi.mock("../src/web3/journeyman.js", () => ({
   hiredEscrowsFor: (a: string) => hiredEscrowsFor(a),
   hasApplied: (id: bigint, a: string) => hasApplied(id, a),
   getEscrow: (id: bigint) => getEscrow(id),

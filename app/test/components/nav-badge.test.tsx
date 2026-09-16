@@ -39,7 +39,7 @@ vi.mock("@/hooks/use-managed-worker", () => ({
    bell needs NotificationProvider, the wallet button needs AppKit. The dot is
    what is under test, so the rest of the shell is stubbed out. */
 vi.mock("@/components/notification-center", () => ({ NotificationCenter: () => null }));
-vi.mock("@/components/atelier/managed-wallet-menu", () => ({ ManagedWalletMenu: () => null }));
+vi.mock("@/components/journeyman/managed-wallet-menu", () => ({ ManagedWalletMenu: () => null }));
 vi.mock("@/components/wallet-button", () => ({ WalletButton: () => null }));
 vi.mock("@/components/theme-toggle", () => ({ ThemeToggle: () => null }));
 

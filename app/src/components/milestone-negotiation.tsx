@@ -81,7 +81,7 @@ export function MilestoneNegotiation({
     setIsSubmitting(true);
     try {
       const { ContractService } = await import("@/lib/web3/contract-service");
-      const cs = new ContractService(CONTRACTS.ATELIER_ESCROW);
+      const cs = new ContractService(CONTRACTS.JOURNEYMAN_ESCROW);
 
       toast({
         title: "Proposing changes...",
@@ -165,7 +165,7 @@ export function MilestoneNegotiation({
     setIsSubmitting(true);
     try {
       const { ContractService } = await import("@/lib/web3/contract-service");
-      const cs = new ContractService(CONTRACTS.ATELIER_ESCROW);
+      const cs = new ContractService(CONTRACTS.JOURNEYMAN_ESCROW);
 
       // Check if proposed amount is different from current amount
       const currentAmount = parseFloat(milestone.amount) / 1e6;
@@ -252,7 +252,7 @@ export function MilestoneNegotiation({
     setIsSubmitting(true);
     try {
       const { ContractService } = await import("@/lib/web3/contract-service");
-      const cs = new ContractService(CONTRACTS.ATELIER_ESCROW);
+      const cs = new ContractService(CONTRACTS.JOURNEYMAN_ESCROW);
 
       toast({
         title: "Rejecting proposal...",

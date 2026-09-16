@@ -30,8 +30,8 @@ test.beforeEach(async ({ page }) => {
   await page.addInitScript(
     ([id, addr]) => {
       try {
-        localStorage.setItem("atelier:worker-id", id);
-        localStorage.setItem("atelier.worker.address", addr);
+        localStorage.setItem("journeyman:worker-id", id);
+        localStorage.setItem("journeyman.worker.address", addr);
       } catch {
         /* private mode — the shot just renders signed out */
       }
@@ -54,7 +54,7 @@ test.beforeEach(async ({ page }) => {
  * screen a different account would render — and it is done here rather than by
  * cropping so the shot keeps the line that explains why the screen has it.
  */
-const DEMO_EMAIL = "cdev@atelier.demo";
+const DEMO_EMAIL = "cdev@journeyman.demo";
 
 async function redactEmail(page: import("@playwright/test").Page) {
   await page.evaluate((demo) => {

@@ -1,6 +1,6 @@
 <div align="center">
 
-# Atelier
+# Journeyman
 
 **Freelance work where nobody has to be trusted.**
 
@@ -34,7 +34,7 @@ look at what you actually bought: you replaced *trusting your counterparty* with
 account, change its fees, or rule against you with no appeal. For a freelancer
 in a country the platform decides to stop serving, that is not a hypothetical.
 
-**Atelier removes the middleman rather than replacing it.** The money sits in a
+**Journeyman removes the middleman rather than replacing it.** The money sits in a
 contract, not in a company's bank account. Escrow is funded before a job is
 visible, so an application is never speculative work. Payment is released per
 milestone against work the client accepted. When the two sides genuinely
@@ -97,7 +97,7 @@ faces the same arbiter, and cannot pay itself either.
 That matters because agent marketplaces today sell only machine services: data,
 inference, voice synthesis, analytics. When an agent needs work only a person
 can do — a logo with taste, a voiceover with warmth, copy with a point of view —
-there is nowhere to buy it. Atelier is that shop, and it reaches humans who do
+there is nowhere to buy it. Journeyman is that shop, and it reaches humans who do
 not own a wallet: sign in with Google or Telegram and a Circle MPC wallet is
 created for you, gas included.
 
@@ -133,12 +133,12 @@ beneficiary does not exist until it is hired.
 
 Proved by a fuzzed invariant over 128,000 calls against a handler that
 deliberately offers the calls a manager must *not* have.
-[`Atelier.sol`](app/contracts/solidity/src/Atelier.sol) ·
+[`Journeyman.sol`](app/contracts/solidity/src/Journeyman.sol) ·
 [`JobManagerInvariant.t.sol`](app/contracts/solidity/test/JobManagerInvariant.t.sol)
 
 ### 2. Productive escrow, and the invariant that had to be weakened
 
-Escrowed capital sits idle for weeks between funding and approval. Atelier
+Escrowed capital sits idle for weeks between funding and approval. Journeyman
 deploys the genuinely idle portion into a Uniswap v4 stable-stable position.
 
 The first version claimed *principal is redeemable at face value, instantly,
@@ -215,7 +215,7 @@ take one — their own Circle wallet is the depositor, so the escrow answers to
 them exactly as it would if they had signed it in a browser extension, and they
 can hand it to Autopilot in the same step. And when they want their own keys,
 one button moves the account, the history and the balance to a wallet they
-control; Atelier stops signing for them from then on.
+control; Journeyman stops signing for them from then on.
 
 Behind the door is a board that has to work for somebody holding no wallet at
 all: the stage they are delivering against and the criteria it will be judged
@@ -228,11 +228,11 @@ beneficiary and a managed worker holds no key to produce one.
 Clients and freelancers can also message each other directly, which matters
 most for the half of the marketplace that has no other channel.
 
-And anyone can ask the app how it works — **Ask Atelier** answers from
+And anyone can ask the app how it works — **Ask Journeyman** answers from
 hand-written knowledge of this specific product rather than a model's guess
 about escrow in general.
 
-[`worker.ts`](app/src/lib/atelier/worker.ts) ·
+[`worker.ts`](app/src/lib/journeyman/worker.ts) ·
 [`google-auth.ts`](agent/daemon/src/workers/google-auth.ts) ·
 [`knowledge.ts`](agent/daemon/src/assistant/knowledge.ts)
 
@@ -263,8 +263,8 @@ flowchart TB
     end
 
     subgraph arc["Arc — chain 5042002, USDC is the native currency"]
-        escrow["Atelier.sol (UUPS proxy)<br/>milestone escrow · jobManager · arbitration"]
-        yield["AtelierYield<br/>investable ceiling · circuit breaker"]
+        escrow["Journeyman.sol (UUPS proxy)<br/>milestone escrow · jobManager · arbitration"]
+        yield["JourneymanYield<br/>investable ceiling · circuit breaker"]
         uni["UniswapV4StableAdapter<br/>single-sided stable LP"]
     end
 
@@ -296,7 +296,7 @@ contract at two points, fuzz-tested at 128,000 calls, and documented in
 ```mermaid
 sequenceDiagram
     participant C as Client
-    participant E as Atelier.sol (Arc)
+    participant E as Journeyman.sol (Arc)
     participant A as Autopilot
     participant G as The Graph
     participant F as Freelancer
@@ -327,7 +327,7 @@ would mean the agent stops when you close your laptop.
 | Path | |
 |---|---|
 | [`app/`](app) | The web app — one deployable Vite project, plus the contracts it talks to |
-| [`app/contracts/solidity/`](app/contracts/solidity) | `Atelier.sol`, the yield controller and adapters, 186 Foundry tests |
+| [`app/contracts/solidity/`](app/contracts/solidity) | `Journeyman.sol`, the yield controller and adapters, 186 Foundry tests |
 | [`backend/`](backend) | The Express API — uploads, messaging, the gasless relayer |
 | [`subgraph/`](subgraph) | The Graph subgraph — escrows, milestones, manager events |
 | [`agent/daemon/`](agent/daemon) | Autopilot: the LLM loop, Circle wallets, x402, Telegram |
@@ -426,7 +426,7 @@ handler offering only the permitted calls proves nothing.
 | | |
 |---|---|
 | Subgraph | [`atelier/v0.0.3`](https://api.studio.thegraph.com/query/1759977/atelier/v0.0.3) on Subgraph Studio, indexing Arc |
-| API | `https://atelier-production-be62.up.railway.app` — Railway |
+| API | `https://journeyman-production-be62.up.railway.app` — Railway |
 | Web app | [`atelier-job.vercel.app`](https://atelier-job.vercel.app) — Vercel |
 | Autopilot daemon | [`independent-presence-production-952d`](https://independent-presence-production-952d.up.railway.app/healthz) — Railway, on a persistent volume |
 
@@ -448,7 +448,7 @@ upgrade; the proxy never does.
 
 ### What upgradeability costs, stated plainly
 
-Atelier is a UUPS proxy, so new features ship without migrating live escrows.
+Journeyman is a UUPS proxy, so new features ship without migrating live escrows.
 That puts one asterisk on the usual escrow promise, and it belongs in the README
 rather than a footnote:
 
@@ -526,8 +526,8 @@ manager route the job back to you — so a five-star rating costs a real
 counterparty. Two colluding wallets remain possible; that needs identity or
 stake, which is on the roadmap rather than claimed.
 
-**Productive escrow is deployed.** The yield layer moved into `AtelierYield`, a
-companion contract, which brought Atelier from 26.2KB to 23,611 bytes — under
+**Productive escrow is deployed.** The yield layer moved into `JourneymanYield`, a
+companion contract, which brought Journeyman from 26.2KB to 23,611 bytes — under
 EIP-170's limit with ~965 to spare. The live proxy was upgraded in place to
 `3.9.1-fee-follows-the-escrow` with the escrow counter intact, which is what the UUPS work
 was for.
@@ -601,7 +601,7 @@ is why the handling is the part that got the tests.
 
 ## Attribution
 
-Atelier is a new product built for ETHOnline 2026. It is not a rebrand, it has
+Journeyman is a new product built for ETHOnline 2026. It is not a rebrand, it has
 no users, and it claims no traction. It builds on our own prior open-source
 escrow and agent code as boilerplate — named in full in
 [`ATTRIBUTION.md`](ATTRIBUTION.md).

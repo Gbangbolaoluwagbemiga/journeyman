@@ -73,8 +73,8 @@ export const config = {
    */
   hireScoreThreshold: Number(process.env.HIRE_SCORE_THRESHOLD ?? 55),
 
-  // Atelier — Atelier calls this contract, does NOT deploy its own
-  atelierAddress: (process.env.ATELIER_CONTRACT_ADDRESS?.trim() ||
+  // Journeyman — Journeyman calls this contract, does NOT deploy its own
+  journeymanAddress: (process.env.JOURNEYMAN_CONTRACT_ADDRESS?.trim() ||
     "0x6142bf4855D4F9dbC1cD8109377d4F4E2AF1ab59") as `0x${string}`,
   usdcAddress: (process.env.USDC_ADDRESS?.trim() ||
     "0x3600000000000000000000000000000000000000") as `0x${string}`,
@@ -85,13 +85,13 @@ export const config = {
    * Arc's free tier), so scanning from genesis is not an option -- and would be
    * 60 million blocks of nothing in any case.
    */
-  atelierDeployBlock: BigInt(process.env.ATELIER_DEPLOY_BLOCK?.trim() || "60797735"),
+  journeymanDeployBlock: BigInt(process.env.JOURNEYMAN_DEPLOY_BLOCK?.trim() || "60797735"),
   /** Largest block span this RPC will answer a getLogs call for. */
   logRangeLimit: BigInt(process.env.LOG_RANGE_LIMIT?.trim() || "9000"),
   graphUrl: process.env.GRAPH_URL?.trim() || "",
 
   /**
-   * The Atelier API, which owns the notification store.
+   * The Journeyman API, which owns the notification store.
    *
    * The daemon needs it to tell web users what the agent did on their behalf —
    * Telegram users already got told, web users got nothing, because
@@ -101,7 +101,7 @@ export const config = {
   apiUrl: (process.env.API_URL?.trim() || "").replace(/\/$/, ""),
   apiSecret: process.env.API_SECRET?.trim() || "",
 
-  // Circle Programmable Wallets (MPC) — the Atelier Agent Wallet treasury.
+  // Circle Programmable Wallets (MPC) — the Journeyman Agent Wallet treasury.
   circleApiKey: process.env.CIRCLE_API_KEY?.trim() || "",
   circleEntitySecret: process.env.CIRCLE_ENTITY_SECRET?.trim() || "",
   circleWalletId: process.env.CIRCLE_WALLET_ID?.trim() || "",
@@ -113,12 +113,12 @@ export const config = {
     process.env.GATEWAY_FACILITATOR_URL?.trim() || "https://gateway-api-testnet.circle.com",
   x402OrderFee: process.env.X402_ORDER_FEE?.trim() || "0.05",
 
-  // x402 BUY side — Atelier paying a marketplace service (services/portfolio-check)
+  // x402 BUY side — Journeyman paying a marketplace service (services/portfolio-check)
   // to verify the leading applicant before hiring. Unset = skip verification.
   portfolioCheckUrl: process.env.PORTFOLIO_CHECK_URL?.trim() || "",
 
   // Application-level spending policy — the second cage. The Developer-Controlled
-  // Wallets SDK has no native policy engine, so Atelier enforces caps itself before
+  // Wallets SDK has no native policy engine, so Journeyman enforces caps itself before
   // every signed spend (see circle/gateway.ts).
   dailySpendCapUsdc: Number(process.env.DAILY_SPEND_CAP_USDC ?? 50),
   x402BuySpendCapUsdc: Number(process.env.X402_BUY_SPEND_CAP_USDC ?? 5),
@@ -158,7 +158,7 @@ export const config = {
   googleClientId: process.env.GOOGLE_CLIENT_ID?.trim() || "",
 
   /**
-   * Where Atelier is served, for links the bot sends into a chat.
+   * Where Journeyman is served, for links the bot sends into a chat.
    *
    * Configurable because it was hardcoded to a previous product's deployment,
    * so every link the bot sent took a freelancer to the wrong app. A URL that

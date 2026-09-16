@@ -12,7 +12,7 @@
  *   TRUSTED_FORWARDER_ADDRESS – deployed ERC-2771 forwarder contract address
  *
  * EIP-712 domain expected from the frontend:
- *   name: "AtelierForwarder"
+ *   name: "JourneymanForwarder"
  *   version: "1"
  *   chainId: <Arc chain ID>
  *   verifyingContract: <TRUSTED_FORWARDER_ADDRESS>
@@ -103,7 +103,7 @@ gaslessRouter.post("/apply", async (req, res) => {
 
     // --- Build EIP-712 domain ---
     const domain = {
-      name: "AtelierForwarder",
+      name: "JourneymanForwarder",
       version: "1",
       chainId: BigInt(chainId),
       verifyingContract: forwarderAddress,

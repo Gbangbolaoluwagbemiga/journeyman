@@ -1,5 +1,5 @@
 /**
- * ATELIER — the top bar.
+ * JOURNEYMAN — the top bar.
  *
  * Rewritten from the original navbar, which carried the same seven links twice
  * — once for desktop, once for the mobile sheet — with the active-state class
@@ -7,7 +7,7 @@
  * Job" to that would have meant four more copies and two more chances for the
  * menus to disagree about what the app contains.
  *
- * The IA now lives in `lib/atelier/nav.ts` and both menus render from it, so
+ * The IA now lives in `lib/journeyman/nav.ts` and both menus render from it, so
  * there is exactly one list of what this product is.
  */
 
@@ -25,7 +25,7 @@ import { useAdminStatus } from "@/hooks/use-admin-status";
 import { useJobCreatorStatus } from "@/hooks/use-job-creator-status";
 import { usePendingApprovals } from "@/hooks/use-pending-approvals";
 import { useWeb3 } from "@/contexts/web3-context";
-import { visibleNav, isCurrent, type NavItem } from "@/lib/atelier/nav";
+import { visibleNav, isCurrent, type NavItem } from "@/lib/journeyman/nav";
 import { useManagedWorker } from "@/hooks/use-managed-worker";
 
 /** One link, styled identically wherever it appears. */
@@ -141,14 +141,14 @@ export function Navbar() {
               before they had understood one. */}
           <Link to="/" className="flex items-center gap-2.5 shrink-0">
             <img
-              src="/atelier-mark.svg"
+              src="/journeyman-mark.svg"
               alt=""
               aria-hidden="true"
               className="h-7 w-7 shrink-0"
             />
             <span className="flex flex-col leading-none">
               <span className="font-display font-bold text-xl bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-                Atelier
+                Journeyman
               </span>
               <span className="hidden sm:block text-[10px] uppercase tracking-wider text-muted-foreground">
                 agents hire people

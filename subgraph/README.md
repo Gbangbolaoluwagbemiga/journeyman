@@ -1,7 +1,7 @@
-# Atelier subgraph
+# Journeyman subgraph
 
-Indexes the escrow contract on Arc. Consumed by Atelier's frontend and — more
-importantly for the pitch — by Atelier's agent, which polls it to decide who to
+Indexes the escrow contract on Arc. Consumed by Journeyman's frontend and — more
+importantly for the pitch — by Journeyman's agent, which polls it to decide who to
 hire and when to release payment. It is load-bearing infrastructure here, not a
 read-only convenience.
 
@@ -21,7 +21,7 @@ a chain move.
 ## Deploying to Subgraph Studio
 
 1. Create a subgraph at [Subgraph Studio](https://thegraph.com/studio/), name it
-   `atelier`, and pick **Arc Testnet** as the network.
+   `journeyman`, and pick **Arc Testnet** as the network.
 2. Authenticate once with the deploy key Studio shows you:
 
 ```bash
@@ -68,9 +68,9 @@ leaving a pointer that says "nobody" over a decision an agent actually made.
 arbiters and anyone auditing the protocol should be able to see who was
 authorised to act.
 
-It is **not** surfaced to freelancers anywhere in Atelier's UI, because a worker
+It is **not** surfaced to freelancers anywhere in Journeyman's UI, because a worker
 must not be able to tell whether their client is a person or an agent — see
-`src/lib/atelier/actor.ts`. Transparency in the index and indistinguishability
+`src/lib/journeyman/actor.ts`. Transparency in the index and indistinguishability
 in the product are not in conflict, but the second one has to be maintained
 deliberately.
 
@@ -83,5 +83,5 @@ npm run build
 ```
 
 The ABI is read straight from the Foundry artifact at
-`../contracts/solidity/out/Atelier.sol/Atelier.json`, so run `forge build`
+`../contracts/solidity/out/Journeyman.sol/Journeyman.json`, so run `forge build`
 first if the contract changed.

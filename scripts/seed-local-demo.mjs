@@ -1,6 +1,6 @@
 /**
- * Seed the LOCAL Atelier daemon with demo activity, so the Autopilot surfaces in
- * Atelier have something to render while you click around.
+ * Seed the LOCAL Journeyman daemon with demo activity, so the Autopilot surfaces in
+ * Journeyman have something to render while you click around.
  *
  *   node scripts/seed-local-demo.mjs [escrowId ...]
  *
@@ -17,7 +17,7 @@
  * number in the submission has to be readable off-chain or off the subgraph.
  * Reasonings below are written to be obviously synthetic if one ever leaks.
  *
- * Undo with:  rm agent/daemon/data/atelier.db   (then restart the daemon)
+ * Undo with:  rm agent/daemon/data/journeyman.db   (then restart the daemon)
  */
 
 import { DatabaseSync } from "node:sqlite";
@@ -27,7 +27,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const DB = resolve(here, "../agent/daemon/data/atelier.db");
+const DB = resolve(here, "../agent/daemon/data/journeyman.db");
 
 if (!existsSync(DB)) {
   console.error(
@@ -116,4 +116,4 @@ escrowIds.forEach((escrowId, i) => {
 
 console.log(`\nSeeded ${escrowIds.length} demo jobs, ${decisionCount} decisions.`);
 console.log("Restart is not needed — the daemon reads SQLite per request.");
-console.log("Undo: rm agent/daemon/data/atelier.db");
+console.log("Undo: rm agent/daemon/data/journeyman.db");

@@ -17,15 +17,15 @@ import {
 } from "@/contexts/notification-context";
 import type { Escrow } from "@/lib/web3/types";
 import { Briefcase } from "lucide-react";
-import { CATEGORIES, categoryOf } from "@/lib/atelier/categories";
+import { CATEGORIES, categoryOf } from "@/lib/journeyman/categories";
 import { JobsHeader } from "@/components/jobs/jobs-header";
 import { JobsStats } from "@/components/jobs/jobs-stats";
 import { JobCard } from "@/components/jobs/job-card";
 import { ApplicationDialog } from "@/components/jobs/application-dialog";
 import { JobsLoading } from "@/components/jobs/jobs-loading";
-import { currentWorkerId, apply as workerApply } from "@/lib/atelier/worker";
+import { currentWorkerId, apply as workerApply } from "@/lib/journeyman/worker";
 import { useManagedEscrows } from "@/hooks/use-managed-escrows";
-import { toastError } from "@/lib/atelier/errors";
+import { toastError } from "@/lib/journeyman/errors";
 import {
   Select,
   SelectContent,
@@ -651,7 +651,7 @@ export default function JobsPage() {
       const { ContractService: GaslessCS } = await import(
         "@/lib/web3/contract-service"
       );
-      const gaslessService = new GaslessCS(CONTRACTS.ATELIER_ESCROW);
+      const gaslessService = new GaslessCS(CONTRACTS.JOURNEYMAN_ESCROW);
       await gaslessService.applyToJob({
         escrow_id: Number.parseInt(job.id, 10),
         cover_letter: coverLetter,

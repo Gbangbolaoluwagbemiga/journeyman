@@ -1,5 +1,5 @@
 /**
- * What kind of work a job is. Mirrors app/src/lib/atelier/categories.ts.
+ * What kind of work a job is. Mirrors app/src/lib/journeyman/categories.ts.
  *
  * Duplicated rather than shared because the app and the daemon are separate
  * deployables with no build step between them, and a category vocabulary that

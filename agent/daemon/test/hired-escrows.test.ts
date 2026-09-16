@@ -17,7 +17,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 /* A deploy block near the head, so the log-walk fallback is one window rather
    than the six thousand a real deploy block would make it. */
-process.env.ATELIER_DEPLOY_BLOCK = "90";
+process.env.JOURNEYMAN_DEPLOY_BLOCK = "90";
 
 const readContract = vi.fn();
 const multicall = vi.fn();
@@ -45,7 +45,7 @@ beforeEach(() => {
 });
 
 async function hiredEscrowsFor(who: `0x${string}`) {
-  const mod = await import("../src/web3/atelier.js");
+  const mod = await import("../src/web3/journeyman.js");
   return mod.hiredEscrowsFor(who);
 }
 

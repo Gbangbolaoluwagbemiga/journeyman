@@ -61,9 +61,9 @@ createAppKit({
   networks: [arcTestnetReown],
   defaultNetwork: arcTestnetReown,
   metadata: {
-    name: "Atelier",
+    name: "Journeyman",
     description: "Milestone-based freelancer escrow on Arc EVM",
-    url: typeof window !== "undefined" ? window.location.origin : "https://atelier.app",
+    url: typeof window !== "undefined" ? window.location.origin : "https://journeyman.app",
     icons: ["/favicon.ico"],
   },
   features: {

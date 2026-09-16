@@ -7,18 +7,18 @@ import "dotenv/config";
 import { createPublicClient, createWalletClient, http, type Abi } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { arcTestnet, config, rpcUrl } from "../src/config.js";
-import atelierAbi from "../src/web3/AtelierABI.json" with { type: "json" };
+import journeymanAbi from "../src/web3/JourneymanABI.json" with { type: "json" };
 
-const abi = atelierAbi as Abi;
+const abi = journeymanAbi as Abi;
 
 const escrowId = BigInt(process.argv[2] ?? "0");
 const milestoneIndex = BigInt(process.argv[3] ?? "0");
 const description =
   process.argv[4] ??
-  "Delivered: primary logo mark in SVG and PNG (1200x1200px), plus 2 color variants (light/dark). Link: https://example.com/atelier-logo-draft";
+  "Delivered: primary logo mark in SVG and PNG (1200x1200px), plus 2 color variants (light/dark). Link: https://example.com/journeyman-logo-draft";
 
 async function main() {
-  // Which seeded freelancer signs. Atelier authorises submitMilestone on the
+  // Which seeded freelancer signs. Journeyman authorises submitMilestone on the
   // hired beneficiary, so submitting as the wrong one reverts with a bare
   // "execution reverted" — which looks like a broken script rather than the
   // wrong signer. FREELANCER=3 picks the third seeded wallet.
@@ -37,7 +37,7 @@ async function main() {
 
   console.log(`Submitting milestone ${milestoneIndex} for escrow #${escrowId} as ${account.address}...`);
 
-  // Atelier requires the lifecycle step before a submission is accepted, and
+  // Journeyman requires the lifecycle step before a submission is accepted, and
   // submitMilestone reverts without it. This script didn't call it — so
   // submitting to a freshly hired escrow failed with a bare "execution
   // reverted", which reads like a broken submission rather than a missing
@@ -48,7 +48,7 @@ async function main() {
     const startHash = await walletClient.writeContract({
       chain: arcTestnet,
       account,
-      address: config.atelierAddress,
+      address: config.journeymanAddress,
       abi,
       functionName: "startWork",
       args: [escrowId],
@@ -62,7 +62,7 @@ async function main() {
   const hash = await walletClient.writeContract({
     chain: arcTestnet,
     account,
-    address: config.atelierAddress,
+    address: config.journeymanAddress,
     abi,
     functionName: "submitMilestone",
     args: [escrowId, milestoneIndex, description],
@@ -70,7 +70,7 @@ async function main() {
   await publicClient.waitForTransactionReceipt({ hash });
 
   console.log(`✓ Submitted — tx ${hash}`);
-  console.log("Atelier's poller (every 15s) will pick this up and review it against the brief.");
+  console.log("Journeyman's poller (every 15s) will pick this up and review it against the brief.");
 }
 
 main().catch((err) => {

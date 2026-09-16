@@ -1,12 +1,12 @@
 {
-  "name": "atelier-subgraph",
+  "name": "journeyman-subgraph",
   "version": "1.0.0",
   "private": true,
   "scripts": {
     "codegen": "graph codegen",
     "build": "graph build",
     "auth": "graph auth",
-    "deploy:studio": "graph deploy --studio atelier"
+    "deploy:studio": "graph deploy --studio journeyman"
   },
   "dependencies": {
     "@graphprotocol/graph-cli": "^0.81.0",

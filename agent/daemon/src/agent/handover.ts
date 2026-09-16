@@ -21,13 +21,13 @@
  * uses exactly what was on screen rather than regenerating something new.
  */
 import type { Abi } from "viem";
-import atelierAbi from "../web3/AtelierABI.json" with { type: "json" };
+import journeymanAbi from "../web3/JourneymanABI.json" with { type: "json" };
 import { config } from "../config.js";
-import { getPublicClient } from "../web3/atelier.js";
+import { getPublicClient } from "../web3/journeyman.js";
 import * as store from "../store.js";
 import { generateBrief } from "./BriefGenerator.js";
 
-const abi = atelierAbi as Abi;
+const abi = journeymanAbi as Abi;
 
 /** How long a client may hold applications open, in minutes. */
 export const MIN_WINDOW_MINUTES = 1;
@@ -62,7 +62,7 @@ export function savePrefs(escrowId: string, prefs: HandoverPrefs): void {
 /** The sentence a client signs to fix the criteria and window for one job. */
 export function handoverMessage(address: string, escrowId: string, windowMinutes: number): string {
   return (
-    `Atelier: hand job #${escrowId} to Autopilot\n` +
+    `Journeyman: hand job #${escrowId} to Autopilot\n` +
     `Review window: ${windowMinutes} minute(s)\n` +
     `Client: ${address.toLowerCase()}`
   );
@@ -77,7 +77,7 @@ export interface EscrowSummary {
 export async function readEscrow(escrowId: string): Promise<EscrowSummary> {
   const client = getPublicClient();
   const esc = (await client.readContract({
-    address: config.atelierAddress,
+    address: config.journeymanAddress,
     abi,
     functionName: "getEscrow",
     args: [BigInt(escrowId)],

@@ -3,7 +3,7 @@ pragma solidity ^0.8.20;
 
 import "./JobManagerBase.t.sol";
 import "./MockYieldAdapter.t.sol";
-import "../src/yield/AtelierYield.sol";
+import "../src/yield/JourneymanYield.sol";
 
 /**
  * PRODUCTIVE ESCROW.
@@ -22,15 +22,15 @@ import "../src/yield/AtelierYield.sol";
  * got paid.
  */
 contract ProductiveEscrowTest is JobManagerBase {
-    AtelierYield internal yield_;
+    JourneymanYield internal yield_;
     MockYieldAdapter internal venue;
 
     function setUp() public override {
         super.setUp();
         /* The yield layer is a companion contract now — it was 1.6KB of why
-           Atelier could not be deployed at all. Same behaviour, wired through
+           Journeyman could not be deployed at all. Same behaviour, wired through
            the escrow's single controller pointer. */
-        yield_ = new AtelierYield(address(sf));
+        yield_ = new JourneymanYield(address(sf));
         venue = new MockYieldAdapter(address(usdc), address(yield_));
         yield_.setYieldAdapter(address(usdc), address(venue));
         // No override: these run against the buffer that actually ships, so a
@@ -54,7 +54,7 @@ contract ProductiveEscrowTest is JobManagerBase {
     function test_onlyTheDepositorMayOptIn() public {
         uint256 id = _createOpenJob();
         vm.prank(outsider);
-        vm.expectRevert(Atelier.Unauthorized.selector);
+        vm.expectRevert(Journeyman.Unauthorized.selector);
         yield_.setYieldOptIn(id, true);
     }
 
@@ -72,16 +72,16 @@ contract ProductiveEscrowTest is JobManagerBase {
 
     function test_bufferCannotBeSetToNothing() public {
         // A zero buffer turns the venue from an optimisation into a dependency.
-        vm.expectRevert(AtelierYield.BufferTooLow.selector);
+        vm.expectRevert(JourneymanYield.BufferTooLow.selector);
         yield_.setYieldBuffer(0);
-        vm.expectRevert(AtelierYield.BufferTooLow.selector);
+        vm.expectRevert(JourneymanYield.BufferTooLow.selector);
         yield_.setYieldBuffer(999);
         yield_.setYieldBuffer(1000); // the floor is allowed
     }
 
     function test_adapterMustMatchItsToken() public {
         MockYieldAdapter wrong = new MockYieldAdapter(address(0xBEEF), address(sf));
-        vm.expectRevert(AtelierYield.InvalidConfig.selector);
+        vm.expectRevert(JourneymanYield.InvalidConfig.selector);
         yield_.setYieldAdapter(address(usdc), address(wrong));
     }
 

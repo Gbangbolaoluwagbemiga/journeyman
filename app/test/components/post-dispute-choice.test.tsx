@@ -26,7 +26,7 @@ vi.mock("@/lib/web3/contract-service", () => ({
   contractService: { withdrawJobFunds, reopenJob },
 }));
 
-const { PostDisputeChoice } = await import("@/components/atelier/post-dispute-choice");
+const { PostDisputeChoice } = await import("@/components/journeyman/post-dispute-choice");
 
 type M = {
   description: string;

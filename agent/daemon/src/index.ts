@@ -1,9 +1,9 @@
-// index.ts — Atelier's daemon entrypoint. Raw node:http (not a framework) so the
+// index.ts — Journeyman's daemon entrypoint. Raw node:http (not a framework) so the
 // x402 seller middleware — which expects Express-style (req, res, next) — mounts
 // with zero adapter code, matching the proven pattern from the reference x402
 // seller implementation this was built against. Serves:
 //
-//   POST /api/hire            x402-gated — AI agents commission Atelier here
+//   POST /api/hire            x402-gated — AI agents commission Journeyman here
 //   POST /api/instruct        unguarded — the human front door (same pipeline)
 //   GET  /api/tasks           REST for the command-center UI
 //   GET  /api/decisions       decision log
@@ -16,15 +16,15 @@ import { createPublicClient, http as viemHttp, formatEther, verifyMessage } from
 import { config, arcTestnet, rpcUrl } from "./config.js";
 import { AgentClient, type AgentEvent } from "./agent/AgentClient.js";
 import { notifyWeb } from "./notify/web.js";
-import { createAtelierGateway } from "./circle/gateway.js";
+import { createJourneymanGateway } from "./circle/gateway.js";
 import { listWhitelistedTokens } from "./web3/tokens.js";
 import { adoptDelegatedJobs } from "./agent/adoptDelegated.js";
 import { onWorkerEvent } from "./events.js";
-import { askAtelier, QuestionRejected } from "./assistant/ask.js";
+import { askJourneyman, QuestionRejected } from "./assistant/ask.js";
 import { AssistantUnavailable } from "./groq/chat.js";
 import * as handover from "./agent/handover.js";
-import { createAtelierPaywall, ORDER_FEE_USDC } from "./circle/x402-seller.js";
-import * as atelier from "./web3/atelier.js";
+import { createJourneymanPaywall, ORDER_FEE_USDC } from "./circle/x402-seller.js";
+import * as journeyman from "./web3/journeyman.js";
 import { graphQuery, isGraphConfigured } from "./graph/client.js";
 import { GET_JOB_APPLICATIONS, GET_JOB_BY_ID, type GQLEscrow } from "./graph/queries.js";
 import * as store from "./store.js";
@@ -37,7 +37,7 @@ import { verifyGoogleIdToken } from "./workers/google-auth.js";
 const PORT = config.port;
 
 /**
- * Held back from every withdrawal so Atelier can still sign.
+ * Held back from every withdrawal so Journeyman can still sign.
  *
  * A treasury drained to exactly zero cannot pay the gas to do anything at all —
  * including paying the next freelancer whose work was already approved.
@@ -51,17 +51,17 @@ const TREASURY_GAS_FLOOR = Number(process.env.TREASURY_GAS_FLOOR_USDC ?? 0.5);
  * withdrawal cannot be replayed to authorise a bigger one.
  */
 function withdrawalMessage(address: string, amountUsdc: string): string {
-  return `Atelier treasury withdrawal\nAddress: ${address.toLowerCase()}\nAmount: ${amountUsdc} USDC`;
+  return `Journeyman treasury withdrawal\nAddress: ${address.toLowerCase()}\nAmount: ${amountUsdc} USDC`;
 }
 
 /** The sentence a client signs to cancel their own unfilled commission. */
 function cancelMessage(address: string, escrowId: string): string {
-  return `Atelier cancel commission\nAddress: ${address.toLowerCase()}\nEscrow: ${escrowId}`;
+  return `Journeyman cancel commission\nAddress: ${address.toLowerCase()}\nEscrow: ${escrowId}`;
 }
 
 /** The sentence a depositor signs to spend their own deposit on a commission. */
 function commissionMessage(address: string, amountUsdc: string): string {
-  return `Atelier commission\nAddress: ${address.toLowerCase()}\nBudget: ${amountUsdc} USDC`;
+  return `Journeyman commission\nAddress: ${address.toLowerCase()}\nBudget: ${amountUsdc} USDC`;
 }
 
 /**
@@ -101,12 +101,12 @@ function broadcast(event: AgentEvent) {
   for (const res of sseClients) res.write(payload);
 }
 
-// Atelier's Gateway-backed treasury (MPC). Lazily created so the daemon still boots
+// Journeyman's Gateway-backed treasury (MPC). Lazily created so the daemon still boots
 // (and /api/tasks etc. still work) if Circle env vars aren't set yet — only x402
 // routes need it.
-let gatewayInstance: ReturnType<typeof createAtelierGateway> | null = null;
+let gatewayInstance: ReturnType<typeof createJourneymanGateway> | null = null;
 function getGateway() {
-  if (!gatewayInstance) gatewayInstance = createAtelierGateway();
+  if (!gatewayInstance) gatewayInstance = createJourneymanGateway();
   return gatewayInstance;
 }
 
@@ -420,7 +420,7 @@ function clientError(err: unknown): string {
   if (err instanceof workers.UserFacingError) return raw;
 
   if (/insufficient|exceeds balance/i.test(raw)) {
-    return "Atelier's treasury doesn't hold enough USDC to fund this commission. Fund the treasury or lower the budget.";
+    return "Journeyman's treasury doesn't hold enough USDC to fund this commission. Fund the treasury or lower the budget.";
   }
   if (/exceeds the maximum single-commission cap/i.test(raw)) return raw; // ours, already phrased for a human
   if (/budget must be positive/i.test(raw)) return raw;
@@ -534,15 +534,15 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // ── x402-gated: AI agents commission Atelier ──
+  // ── x402-gated: AI agents commission Journeyman ──
   if (req.method === "POST" && url.pathname === "/api/hire") {
     try {
       const gateway = getGateway();
-      const applyPaywall = createAtelierPaywall(gateway.address as `0x${string}`, ORDER_FEE_USDC);
+      const applyPaywall = createJourneymanPaywall(gateway.address as `0x${string}`, ORDER_FEE_USDC);
       const proceed = await applyPaywall(req, res);
       if (!proceed) return; // paywall already wrote 402 or an error
 
-      // The x402 commission fee that just cleared — "Payment 1: robot → Atelier" in
+      // The x402 commission fee that just cleared — "Payment 1: robot → Journeyman" in
       // the demo script. The middleware verifies+settles before we get here but
       // never persists anything; this is the only place that payment is recorded.
       const payment = (req as unknown as { payment?: { payer?: string; transaction?: string } }).payment;
@@ -577,7 +577,7 @@ const server = http.createServer(async (req, res) => {
   /**
    * Read-only brief preview.
    *
-   * Atelier needs to show a client what the agent proposes — title, budget,
+   * Journeyman needs to show a client what the agent proposes — title, budget,
    * duration, acceptance criteria, and the milestone split — BEFORE any money
    * moves. /api/instruct cannot serve that: it generates the brief and opens a
    * funded escrow in the same call, so the only way to see the agent's proposal
@@ -879,7 +879,7 @@ const server = http.createServer(async (req, res) => {
         ? body.messages.map((m) => ({ role: m.role === "assistant" ? "assistant" as const : "user" as const, content: String(m.content ?? "") }))
         : [];
 
-      const answer = await askAtelier(turns, body.viewer);
+      const answer = await askJourneyman(turns, body.viewer);
       return json(res, 200, { answer });
     } catch (err) {
       if (err instanceof QuestionRejected) return json(res, 400, { error: err.message });
@@ -976,7 +976,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   // Treasury address + live balance — read-only, no key material involved. The
-  // command center shows this so a user knows what Atelier can actually afford
+  // command center shows this so a user knows what Journeyman can actually afford
   // before posting a job, and where to send funds to top it up.
   if (req.method === "GET" && url.pathname === "/api/wallet") {
     try {
@@ -1017,8 +1017,8 @@ const server = http.createServer(async (req, res) => {
    * A depositor's own position in the pooled treasury.
    *
    * `withdrawable` is deliberately NOT just what they put in. The treasury is a
-   * single pooled wallet that Atelier spends from to fund escrows, and money in
-   * an escrow has genuinely left it — so if someone deposits $5 and Atelier
+   * single pooled wallet that Journeyman spends from to fund escrows, and money in
+   * an escrow has genuinely left it — so if someone deposits $5 and Journeyman
    * commissions $5 of work, there is nothing to give back until that work
    * settles. Paying the first person to ask, out of a pot that is backing other
    * people's live commissions, is a bank run with extra steps.
@@ -1031,7 +1031,7 @@ const server = http.createServer(async (req, res) => {
     try {
       const account = store.treasuryAccount(address);
       const onHand = await treasuryBalance();
-      // Keep a little back so Atelier can still sign; a treasury that cannot pay
+      // Keep a little back so Journeyman can still sign; a treasury that cannot pay
       // gas cannot pay anyone.
       const spendable = Math.max(0, onHand - TREASURY_GAS_FLOOR);
       return json(res, 200, {
@@ -1071,7 +1071,7 @@ const server = http.createServer(async (req, res) => {
       if (!receipt || receipt.status !== "success") return json(res, 400, { error: "That transaction has not succeeded." });
 
       const treasury = config.circleWalletAddress.toLowerCase();
-      if ((tx.to ?? "").toLowerCase() !== treasury) return json(res, 400, { error: "That transaction did not pay Atelier's treasury." });
+      if ((tx.to ?? "").toLowerCase() !== treasury) return json(res, 400, { error: "That transaction did not pay Journeyman's treasury." });
       if (tx.from.toLowerCase() !== b.from.toLowerCase()) return json(res, 400, { error: "That transaction was not sent from this address." });
       if (tx.value <= 0n) return json(res, 400, { error: "That transaction moved no funds." });
 
@@ -1094,7 +1094,7 @@ const server = http.createServer(async (req, res) => {
    * Withdraw a deposit.
    *
    * Authorised by a SIGNATURE from the depositing address, not by asking. The
-   * treasury is Atelier's wallet, so an endpoint that pays out to whatever
+   * treasury is Journeyman's wallet, so an endpoint that pays out to whatever
    * address the caller names would let anyone drain everyone else's deposits by
    * typing their address — the signature is what proves the caller controls it.
    */
@@ -1166,7 +1166,7 @@ const server = http.createServer(async (req, res) => {
 
   // ── The human front door (managed-worker layer) ──────────────────────────
   // Same pipeline as everything else: an application submitted here lands on
-  // the Atelier subgraph, and the poller picks it up without knowing or
+  // the Journeyman subgraph, and the poller picks it up without knowing or
   // caring that a person on a web page produced it.
 
   if (req.method === "POST" && url.pathname === "/api/worker/join") {
@@ -1293,7 +1293,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   /**
-   * On-chain reputation, read straight from Atelier.
+   * On-chain reputation, read straight from Journeyman.
    *
    * Deliberately NOT computed from our own database: the point of putting
    * ratings on the contract is that anyone can verify them without trusting us,
@@ -1310,7 +1310,7 @@ const server = http.createServer(async (req, res) => {
       const entries = await Promise.all(
         addresses.map(async (a) => {
           try {
-            return [a.toLowerCase(), await atelier.getAverageRating(a as `0x${string}`)] as const;
+            return [a.toLowerCase(), await journeyman.getAverageRating(a as `0x${string}`)] as const;
           } catch {
             return [a.toLowerCase(), { average: 0, count: 0 }] as const;
           }
@@ -1378,27 +1378,27 @@ const server = http.createServer(async (req, res) => {
         return json(res, 400, {
           error:
             task.status === "active"
-              ? "Someone is already working on this — their claim on the escrow is exactly what makes Atelier trustworthy, so it can't be cancelled now."
+              ? "Someone is already working on this — their claim on the escrow is exactly what makes Journeyman trustworthy, so it can't be cancelled now."
               : `This commission is ${task.status}; only an unfilled one can be cancelled.`,
         });
       }
 
-      // Measure rather than assume. Atelier deducts a cancellation penalty
+      // Measure rather than assume. Journeyman deducts a cancellation penalty
       // that scales with how often you've cancelled and how many people already
       // applied, so the amount that actually comes back is not the face value of
       // the budget — and the client must be refunded what was really recovered.
       const before = await treasuryBalance();
-      const txHash = await atelier.cancelJob(BigInt(b.escrowId));
+      const txHash = await journeyman.cancelJob(BigInt(b.escrowId));
       const recovered = Math.max(0, (await treasuryBalance()) - before);
 
       store.updateTaskStatus(task.id, "cancelled", task.escrowId ?? undefined);
 
       // Pass it back to whoever commissioned the work.
       //
-      // Atelier has to be the escrow depositor — Atelier only lets the
+      // Journeyman has to be the escrow depositor — Journeyman only lets the
       // depositor approve milestones, and a machine approving them is the entire
-      // product — so the contract refunds Atelier, not the client. Forwarding it
-      // is therefore a POLICY Atelier keeps, not something the contract enforces,
+      // product — so the contract refunds Journeyman, not the client. Forwarding it
+      // is therefore a POLICY Journeyman keeps, not something the contract enforces,
       // and it is described that way everywhere rather than implied to be a
       // guarantee.
       let refund: { to: string; amountUsdc: string; txHash: string } | null = null;
@@ -1597,7 +1597,7 @@ const server = http.createServer(async (req, res) => {
        */
       let rating: { average: number; count: number } | null = null;
       try {
-        rating = await atelier.getAverageRating(worker.walletAddress as `0x${string}`);
+        rating = await journeyman.getAverageRating(worker.walletAddress as `0x${string}`);
       } catch {
         /* leave it null */
       }
@@ -1640,7 +1640,7 @@ const server = http.createServer(async (req, res) => {
    *
    * The counterpart to /api/worker/apply: same account, same wallet, other side
    * of the table. Their Circle wallet is the depositor, so the escrow answers to
-   * them — not to Atelier and not to the agent.
+   * them — not to Journeyman and not to the agent.
    */
   if (req.method === "POST" && url.pathname === "/api/worker/commission") {
     try {
@@ -1812,7 +1812,7 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, () => {
-  console.log(`\n  🎨 Atelier daemon listening on http://localhost:${PORT}`);
+  console.log(`\n  🎨 Journeyman daemon listening on http://localhost:${PORT}`);
   console.log(`     POST /api/hire       (x402-gated — AI agents)`);
   console.log(`     POST /api/instruct   (human front door)`);
   console.log(`     GET  /events         (SSE — command center)\n`);
@@ -1868,7 +1868,7 @@ const reviewDoneKey = (escrowId: string, index: number, submittedAt: string) => 
 const reviewTriesKey = (escrowId: string, index: number, submittedAt: string) => `milestone_review_tries:${escrowId}:${index}:${submittedAt}`;
 const MAX_REVIEW_ATTEMPTS = 5;
 
-// Last application count Atelier has actually SCORED for a given job. Without this,
+// Last application count Journeyman has actually SCORED for a given job. Without this,
 // a job with zero (or unchanged) applicants gets re-queried and re-scored every
 // 15s forever — burning LLM calls for nothing and flooding the command center
 // with the same "no suitable applicant" notification on a loop. Only re-run
@@ -1883,10 +1883,10 @@ const scoredCountKey = (escrowId: string) => `scored_applications:${escrowId}`;
 /**
  * Rate the freelancer on-chain once a job finishes.
  *
- * This is what makes Atelier's reputation REAL rather than derived. Anyone can
+ * This is what makes Journeyman's reputation REAL rather than derived. Anyone can
  * compute a reputation score from their own database and call it behaviour-based;
- * Atelier's submitRating puts it on the contract, where it is readable by
- * anyone — including Atelier's own dApp and any future client — and cannot be
+ * Journeyman's submitRating puts it on the contract, where it is readable by
+ * anyone — including Journeyman's own dApp and any future client — and cannot be
  * quietly recalculated to flatter us.
  *
  * The score isn't invented: it comes from the review scores the agent
@@ -1908,7 +1908,7 @@ async function rateFreelancer(escrowId: string, brief: { milestones?: unknown[] 
      * The same reading cost a freelancer their whole board a few commits ago;
      * it is the escrow that knows who is on it.
      */
-    const esc = (await atelier.getEscrow(BigInt(escrowId))) as { beneficiary?: string };
+    const esc = (await journeyman.getEscrow(BigInt(escrowId))) as { beneficiary?: string };
     const freelancer = esc.beneficiary;
     if (!freelancer || /^0x0+$/i.test(freelancer)) return;
 
@@ -1925,7 +1925,7 @@ async function rateFreelancer(escrowId: string, brief: { milestones?: unknown[] 
         ? `All ${milestones} milestone(s) accepted first time against the acceptance brief.`
         : `Completed after ${rejections} revision round(s); all ${milestones} milestone(s) ultimately accepted.`;
 
-    const txHash = await atelier.submitRating(BigInt(escrowId), score, review);
+    const txHash = await journeyman.submitRating(BigInt(escrowId), score, review);
     console.log(`[rating] ${freelancer} rated ${score}/5 for escrow ${escrowId} (${txHash})`);
     broadcast({
       type: "task_completed",
@@ -2016,7 +2016,7 @@ function sweepStrandedBriefs(): void {
  * path: money nobody earned goes back.
  *
  * Deliberately only touches jobs still at "posted". The moment a freelancer is
- * hired their claim on the escrow is exactly what makes Atelier worth trusting.
+ * hired their claim on the escrow is exactly what makes Journeyman worth trusting.
  */
 /**
  * How much of an escrow is genuinely still at stake, in USDC.
@@ -2031,7 +2031,7 @@ function sweepStrandedBriefs(): void {
  */
 async function unresolvedValue(escrowId: string): Promise<number> {
   try {
-    const ms = (await atelier.getMilestones(BigInt(escrowId))) as { amount?: bigint; status?: number | bigint }[];
+    const ms = (await journeyman.getMilestones(BigInt(escrowId))) as { amount?: bigint; status?: number | bigint }[];
     if (!Array.isArray(ms) || !ms.length) return 0;
     return ms
       .filter((m) => Number(m.status ?? 0) !== MILESTONE_APPROVED)
@@ -2080,7 +2080,7 @@ async function sweepExpiredCommissions(): Promise<void> {
     // anyone assigned to it.
     let onChain: { beneficiary?: string; totalAmount?: bigint };
     try {
-      onChain = (await atelier.getEscrow(BigInt(task.escrowId))) as { beneficiary?: string; totalAmount?: bigint };
+      onChain = (await journeyman.getEscrow(BigInt(task.escrowId))) as { beneficiary?: string; totalAmount?: bigint };
     } catch {
       continue;
     }
@@ -2093,7 +2093,7 @@ async function sweepExpiredCommissions(): Promise<void> {
     cancelAttemptedAt.set(task.escrowId, Date.now());
 
     try {
-      const txHash = await atelier.cancelJob(BigInt(task.escrowId));
+      const txHash = await journeyman.cancelJob(BigInt(task.escrowId));
       store.updateTaskStatus(task.id, "cancelled", task.escrowId);
       console.log(`[poller] expired unfilled commission ${task.escrowId} cancelled, budget returned (${txHash})`);
       broadcast({
@@ -2115,7 +2115,7 @@ async function sweepExpiredCommissions(): Promise<void> {
  * sweepExpiredCommissions only touches commissions still at "posted" — nobody
  * hired, nothing at stake. That was the right rule and it left a real hole:
  * once a freelancer IS hired and then walks away, or an arbiter settles one
- * milestone of two and the rest is never delivered, Atelier correctly
+ * milestone of two and the rest is never delivered, Journeyman correctly
  * refuses cancelJob (their claim on the escrow is the whole product) and
  * nothing else ever ran.
  *
@@ -2181,7 +2181,7 @@ async function sweepStrandedEscrows(): Promise<void> {
     }
 
     try {
-      const escrow = (await atelier.getEscrow(BigInt(task.escrowId))) as {
+      const escrow = (await journeyman.getEscrow(BigInt(task.escrowId))) as {
         totalAmount?: bigint;
         deadline?: bigint;
         status?: number | bigint;
@@ -2198,7 +2198,7 @@ async function sweepStrandedEscrows(): Promise<void> {
       // Measure what actually came back rather than assuming the face value —
       // same reason as the cancellation path.
       const before = await treasuryBalance();
-      const txHash = await atelier.emergencyRefundAfterDeadline(BigInt(task.escrowId));
+      const txHash = await journeyman.emergencyRefundAfterDeadline(BigInt(task.escrowId));
       const recovered = Math.max(0, (await treasuryBalance()) - before);
 
       store.updateTaskStatus(task.id, "refunded", task.escrowId);
@@ -2213,7 +2213,7 @@ async function sweepStrandedEscrows(): Promise<void> {
       }
       console.log(`[poller] stranded escrow ${task.escrowId} reclaimed, $${recovered.toFixed(2)} returned (${txHash})`);
 
-      const message = `"${brief.title ?? "Commission"}" was never finished. Its remaining $${recovered.toFixed(2)} has been released from escrow and is back in your Atelier balance.`;
+      const message = `"${brief.title ?? "Commission"}" was never finished. Its remaining $${recovered.toFixed(2)} has been released from escrow and is back in your Journeyman balance.`;
       broadcast({ type: "task_completed", message, escrowId: task.escrowId, txHash, timestamp: Date.now() });
       void telegram.notifyClientForEscrow(task.escrowId, `💸 <b>Escrow released.</b>\n\n${telegram.esc(message)}`);
     } catch (err) {
@@ -2252,7 +2252,7 @@ async function reconcileTaskStatuses(): Promise<void> {
     if (!task.escrowId) continue;
     if (task.status === "briefing" || task.status === "failed") continue;
     try {
-      const e = (await atelier.getEscrow(BigInt(task.escrowId))) as { totalAmount?: bigint; status?: number | bigint };
+      const e = (await journeyman.getEscrow(BigInt(task.escrowId))) as { totalAmount?: bigint; status?: number | bigint };
       if (!e || e.status === undefined) continue;
       const chain = Number(e.status);
       const held = Number(e.totalAmount ?? 0n) / 1e6;
@@ -2281,7 +2281,7 @@ async function reconcileTaskStatuses(): Promise<void> {
  * freelancer has a claim, and emergencyRefundAfterDeadline needs another thirty
  * days. Money the client could not get back and nobody was working for.
  *
- * Atelier has raiseOverdueDispute for exactly this. It does NOT refund — it
+ * Journeyman has raiseOverdueDispute for exactly this. It does NOT refund — it
  * hands the decision to a human arbiter, which is the right behaviour: a
  * freelancer who is late but delivered something should not be ruled against
  * automatically, and one who delivered nothing should not hold the money
@@ -2301,7 +2301,7 @@ async function sweepOverdueCommissions(): Promise<void> {
     if (task.status === "cancelled" || task.status === "refunded" || task.status === "disputed") continue;
 
     try {
-      const escrow = (await atelier.getEscrow(BigInt(task.escrowId))) as {
+      const escrow = (await journeyman.getEscrow(BigInt(task.escrowId))) as {
         totalAmount?: bigint;
         deadline?: bigint;
         beneficiary?: string;
@@ -2332,7 +2332,7 @@ async function sweepOverdueCommissions(): Promise<void> {
       const daysLate = Math.floor((nowSec - deadline) / 86_400);
       const held = atStake;
 
-      const txHash = await atelier.raiseOverdueDispute(
+      const txHash = await journeyman.raiseOverdueDispute(
         BigInt(task.escrowId),
         `Delivery window passed ${daysLate} day(s) ago with $${held.toFixed(2)} still escrowed. ` +
           `Escalated automatically for a human arbiter to decide how the remaining balance should be settled.`,
@@ -2346,7 +2346,7 @@ async function sweepOverdueCommissions(): Promise<void> {
         type: "escalated",
         reasoning:
           `This commission passed its ${brief.durationDays ?? "?"}-day delivery window ${daysLate} day(s) ago with ` +
-          `$${held.toFixed(2)} still in escrow. Atelier escalated it to a human arbiter rather than leaving the money ` +
+          `$${held.toFixed(2)} still in escrow. Journeyman escalated it to a human arbiter rather than leaving the money ` +
           `locked — it cannot refund on its own, and waiting for the emergency window would take another month.`,
         target: store.hiredFor(task.escrowId) ?? undefined,
         timestamp: Date.now(),
@@ -2363,7 +2363,7 @@ async function sweepOverdueCommissions(): Promise<void> {
         task.escrowId,
         `⏰ <b>Your commission ran past its deadline.</b>\n\n${telegram.esc(brief.title ?? "It")} was due ${daysLate} day(s) ago with ` +
           `$${held.toFixed(2)} still escrowed, so it has gone to a human arbiter. Your money stays locked until they rule — ` +
-          `Atelier cannot release or reclaim it on its own.\n\n${config.publicAppUrl}/jobs/${task.escrowId}`,
+          `Journeyman cannot release or reclaim it on its own.\n\n${config.publicAppUrl}/jobs/${task.escrowId}`,
       );
     } catch (err) {
       // Expected when the contract does not consider it overdue yet.
@@ -2440,7 +2440,7 @@ async function pollOnce() {
   // RESOLVED it nothing noticed. The page kept saying "with a human arbiter"
   // forever, neither party was told the outcome, and the client's share of the
   // split never came back to their balance. Escalation is a handover, not an
-  // ending — Atelier still owes both sides the result.
+  // ending — Journeyman still owes both sides the result.
   const tasks = store
     .listTasks(300)
     .filter((t) => t.escrowId && (t.status === "posted" || t.status === "active" || t.status === "disputed"));
@@ -2553,7 +2553,7 @@ async function pollOnce() {
 
         // Completion is derived from the MILESTONES, not from escrow.status.
         // The old check was `escrow.status === 2` (Released), which never fires:
-        // Atelier leaves an escrow at status 1 even after every milestone is
+        // Journeyman leaves an escrow at status 1 even after every milestone is
         // approved and the money is out the door. Escrow #19 had all milestones
         // approved and $4 genuinely paid to a human, and still showed as active —
         // so the dashboard reported "0 completed, 0% completion rate" forever,
@@ -2573,7 +2573,7 @@ async function pollOnce() {
           store.updateTaskStatus(task.id, "disputed", task.escrowId);
           broadcast({
             type: "escalated_to_human",
-            message: "Job escalated — a human arbiter now holds this milestone via Atelier's dispute system.",
+            message: "Job escalated — a human arbiter now holds this milestone via Journeyman's dispute system.",
             escrowId: task.escrowId,
             timestamp: Date.now(),
           });
@@ -2626,13 +2626,13 @@ async function pollOnce() {
   // fails silently per-task forever: the daemon stays healthy, the API keeps
   // answering, and jobs simply stop moving with nothing on screen to say why.
   // Announce the outage ONCE, and announce recovery once, so the command
-  // center can tell a viewer that Atelier has gone blind rather than idle.
+  // center can tell a viewer that Journeyman has gone blind rather than idle.
   const nowDegraded = tasks.length > 0 && pollFailures >= tasks.length;
   if (nowDegraded && !pollerDegraded) {
     pollerDegraded = true;
     broadcast({
       type: "error",
-      message: "Lost contact with the Atelier subgraph — jobs will not advance until it returns. Escrowed funds are unaffected.",
+      message: "Lost contact with the Journeyman subgraph — jobs will not advance until it returns. Escrowed funds are unaffected.",
       timestamp: Date.now(),
     });
   } else if (!nowDegraded && pollerDegraded) {
@@ -2661,10 +2661,10 @@ void (async () => {
    * meant thousands of calls on every boot to answer a question that one pass
    * over the same blocks answers for all of them at once.
    */
-  let sweep: Map<string, atelier.DisputeAward[]>;
+  let sweep: Map<string, journeyman.DisputeAward[]>;
   backfillState = { status: "scanning" };
   try {
-    sweep = await atelier.recentDisputeAwards(atelier.CHUNKS_PER_DAY * 7);
+    sweep = await journeyman.recentDisputeAwards(journeyman.CHUNKS_PER_DAY * 7);
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
     console.warn("[repair] could not sweep dispute history:", error);
@@ -2757,15 +2757,15 @@ setInterval(() => {
 // boots and runs identically either way.
 telegram.startTelegramBot();
 
-/** Atelier milestone states we care about once an arbiter is involved. */
+/** Journeyman milestone states we care about once an arbiter is involved. */
 const MILESTONE_RESOLVED = 5;
 
 /**
  * Notice when a human arbiter has ruled, and finish the job properly.
  *
- * Escalation was treated as the end of Atelier's involvement: the task was
+ * Escalation was treated as the end of Journeyman's involvement: the task was
  * marked "disputed" and dropped out of the poll set forever. So when a dispute
- * was actually resolved on Atelier — money moved, the split was decided —
+ * was actually resolved on Journeyman — money moved, the split was decided —
  * nothing on this side noticed. The tracking page said "with a human arbiter"
  * indefinitely, neither the freelancer nor the client was told the outcome, and
  * the client's returned share never reappeared in their balance even though the
@@ -2787,7 +2787,7 @@ async function settleResolvedDispute(task: store.TaskRow, brief: { milestones?: 
    * reaches a "resolved" state.
    *
    * Checked against the real contract rather than the enum: resolving #56 on
-   * Atelier moved its milestone to APPROVED (2), never to RESOLVED (5). A
+   * Journeyman moved its milestone to APPROVED (2), never to RESOLVED (5). A
    * check for status 5 would have waited forever, which is the same bug as
    * before wearing a different hat.
    */
@@ -2805,13 +2805,13 @@ async function settleResolvedDispute(task: store.TaskRow, brief: { milestones?: 
    *      credited $3.70 when $1.25 had come back. `totalAmount` is only
    *      decremented by the freelancer's share, so it cannot answer this.
    *
-   * Atelier states both halves itself, at the moment it moves the money:
+   * Journeyman states both halves itself, at the moment it moves the money:
    * DisputeResolved(…, freelancerAmount, clientAmount, …). Verified against
    * #56, whose event reads freelancer $1.25 / client $1.25 and matches two USDC
    * transfers in the same block. No arithmetic, no assumption, no third way to
    * get this wrong.
    */
-  const awards = await atelier.disputeAwards(BigInt(task.escrowId));
+  const awards = await journeyman.disputeAwards(BigInt(task.escrowId));
   if (!awards.length) return; // no stated award, no settlement — try again next pass
 
   const paidOut = awards.reduce((n, a) => n + a.freelancerAmount, 0);
@@ -2897,9 +2897,9 @@ async function settleResolvedDispute(task: store.TaskRow, brief: { milestones?: 
   /**
    * And record the award as a payment, so "Paid out" tells the truth.
    *
-   * That figure counts payments with direction escrow_release, which Atelier
+   * That figure counts payments with direction escrow_release, which Journeyman
    * writes when IT releases a milestone. An arbiter's award moves the same
-   * money through the same escrow without Atelier touching it, so the page
+   * money through the same escrow without Journeyman touching it, so the page
    * showed $0.00 for a freelancer who had been paid $1.25. Keyed on the escrow
    * so re-settling cannot pay them twice on paper.
    */
@@ -2941,7 +2941,7 @@ async function settleResolvedDispute(task: store.TaskRow, brief: { milestones?: 
       "⚖️ <b>The dispute on your commission has been resolved.</b>",
       "",
       telegram.esc(outcomeForClient + remainder),
-      returned > 0.000001 ? `$${returned.toFixed(2)} is back in your Atelier balance to commission or withdraw.` : "",
+      returned > 0.000001 ? `$${returned.toFixed(2)} is back in your Journeyman balance to commission or withdraw.` : "",
       "",
       jobLink,
     ]

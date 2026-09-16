@@ -1,7 +1,7 @@
 /**
  * MY JOBS — one place, whichever side of the table you are on.
  *
- * Atelier previously had "My Work" and "My Jobs" as separate destinations, which
+ * Journeyman previously had "My Work" and "My Jobs" as separate destinations, which
  * made sense to whoever built it and to nobody using it. Most people on a
  * marketplace like this do both: you hire someone for a logo and take a writing
  * job the same week. Two nav entries meant two dashboards, two mental models,
@@ -30,16 +30,16 @@ import { Briefcase, Hammer, Loader2, Send } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { useWeb3 } from "@/contexts/web3-context";
-import { currentWorkerId } from "@/lib/atelier/worker";
+import { currentWorkerId } from "@/lib/journeyman/worker";
 import { useFreelancerStatus } from "@/hooks/use-freelancer-status";
 import { useJobCreatorStatus } from "@/hooks/use-job-creator-status";
 import {
   PageActionsProvider,
   PageActionsSlot,
-} from "@/components/atelier/page-actions";
+} from "@/components/journeyman/page-actions";
 import DashboardPage from "@/pages/DashboardPage";
 import FreelancerPage from "@/pages/FreelancerPage";
-import { MyApplications } from "@/components/atelier/my-applications";
+import { MyApplications } from "@/components/journeyman/my-applications";
 
 type Side = "hiring" | "working" | "applications";
 
@@ -102,7 +102,7 @@ export default function MyJobsPage() {
    * no key and never connects one, so every link that lands here dead-ended
    * them on "Connect a wallet to see your jobs". Including the notification
    * telling them a dispute over their own work had been decided: they tapped
-   * it, and Atelier told them they were nobody.
+   * it, and Journeyman told them they were nobody.
    *
    * Their jobs live on their own board. Send them there rather than explaining
    * why this page cannot help.
@@ -178,7 +178,7 @@ export default function MyJobsPage() {
         >
           {/* Tabs on the left, the active page's own actions on the right, one
               row. The buttons are portalled in from whichever dashboard is
-              mounted — see components/atelier/page-actions.tsx. */}
+              mounted — see components/journeyman/page-actions.tsx. */}
           <div className="flex items-center justify-between gap-3 flex-wrap">
             {/* Scrolls rather than wrapping on a narrow screen — a tab bar that
                 reflows onto two lines pushes the content down and looks broken. */}
