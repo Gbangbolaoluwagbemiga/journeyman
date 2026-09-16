@@ -414,12 +414,20 @@ handler offering only the permitted calls proves nothing.
 
 | | |
 |---|---|
-| Network | Arc EVM Testnet · chain `5042002` |
+| Network | Arbitrum Sepolia · chain `421614` |
 | Proxy (**the contract**) | [`0x5128B3E2a20d483f68834b26505aFD7457C282dc`](https://sepolia.arbiscan.io/address/0x5128B3E2a20d483f68834b26505aFD7457C282dc) |
-| Implementation | `0x77123D946B89Fa1367ff3f323a5c6E5A3ADB70db` · `4.0.0-journeyman-arbitrum` |
-| Yield controller | [`0x44E5e128B084750694BB0B295713832cfe1750bB`](https://testnet.arcscan.app/address/0x44E5e128B084750694BB0B295713832cfe1750bB) |
-| Testnet venue | [`0xe6775B67963efE7e9F4B4e1621Ec08f8DAf97907`](https://testnet.arcscan.app/address/0xe6775B67963efE7e9F4B4e1621Ec08f8DAf97907) — `SponsoredVault`, which earns nothing and says so |
-| USDC | `0x3600000000000000000000000000000000000000` |
+| Implementation | [`0x77123D946B89Fa1367ff3f323a5c6E5A3ADB70db`](https://sepolia.arbiscan.io/address/0x77123D946B89Fa1367ff3f323a5c6E5A3ADB70db) · `4.0.0-journeyman-arbitrum` |
+| Deploy block | `309527684` |
+| Yield controller | [`0x44a4a235DEb0b32929DDA386E9FE931Dd055d0E3`](https://sepolia.arbiscan.io/address/0x44a4a235DEb0b32929DDA386E9FE931Dd055d0E3) |
+| Yield venue | [`0xcc116FaD144FFAC4AdD5f97820Cd4C286488e24a`](https://sepolia.arbiscan.io/address/0xcc116FaD144FFAC4AdD5f97820Cd4C286488e24a) — `UniswapV4StableAdapter`, against the real PoolManager |
+| Uniswap v4 PoolManager | [`0xFB3e0C6F74eB1a21CC1Da29aeC80D2Dfe6C9a317`](https://sepolia.arbiscan.io/address/0xFB3e0C6F74eB1a21CC1Da29aeC80D2Dfe6C9a317) |
+| Pool | USDT/USDC · fee `100` · tickSpacing `1` · no hooks · range `[-276535, -276335]` |
+| USDC | [`0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d`](https://sepolia.arbiscan.io/address/0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d) — Circle testnet USDC |
+
+All four are verified on Arbiscan. The venue is the same contract a mainnet
+deploy would use, pointed at the same Uniswap code — not a stub that agrees
+with us. `SponsoredVault`, the earns-nothing placeholder the Arc deployment had
+to use because Arc has no Uniswap v4, is no longer in the deployment path.
 
 ### Live services
 
