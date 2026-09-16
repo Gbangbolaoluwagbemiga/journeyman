@@ -4,13 +4,13 @@ schema:
 dataSources:
   - kind: ethereum
     name: Journeyman
-    network: arc-testnet
+    network: arbitrum-sepolia
     source:
-      address: "0xA93F832ccaAb62123f82D4c92ec897A6Bdb252BE"
+      address: "0x5128B3E2a20d483f68834b26505aFD7457C282dc"
       abi: Journeyman
       # The block the ERC1967 proxy was deployed in. Too low and indexing
       # crawls millions of empty blocks; too high and escrows go missing.
-      startBlock: 60797735
+      startBlock: 309527684
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7

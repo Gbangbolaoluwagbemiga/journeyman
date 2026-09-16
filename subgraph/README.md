@@ -1,22 +1,20 @@
 # Journeyman subgraph
 
-Indexes the escrow contract on Arc. Consumed by Journeyman's frontend and — more
-importantly for the pitch — by Journeyman's agent, which polls it to decide who to
-hire and when to release payment. It is load-bearing infrastructure here, not a
-read-only convenience.
+Indexes the escrow contract on Arbitrum Sepolia. Consumed by Journeyman's
+frontend and — more importantly — by Journeyman's agent, which polls it to decide
+who to hire and when to release payment. It is load-bearing infrastructure here,
+not a read-only convenience.
 
-## Why this moved off Goldsky
+The daemon does not depend on it being up. Every query it makes falls back to
+reading the chain directly, because an index that is behind returns an empty
+list and an empty list is indistinguishable from "nothing happened" — which once
+emptied a freelancer's board while their finished job sat on-chain. The subgraph
+makes the loop fast; it is not what makes it work.
 
-The Graph's ETHOnline track requires, verbatim:
+## Why Subgraph Studio rather than a third-party host
 
-> "Consume live data from a Graph provider, for example querying Subgraphs with
-> an API key from **Subgraph Studio**, or streaming Substreams via **The Graph
-> Market**. Mocked, local-only, or static datasets do not qualify."
-
-Both source products read from Goldsky, which is a third-party host and does not
-satisfy that. Arc *is* in The Graph's networks registry — `arc-testnet`,
-`eip155:5042002`, subgraphs supported — so this is a redeploy, not a rewrite or
-a chain move.
+Both source products read from Goldsky. Studio is the first-party option, and
+being on it means the daemon queries the same data path anyone else would.
 
 ## Deploying to Subgraph Studio
 

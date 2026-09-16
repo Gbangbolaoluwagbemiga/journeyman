@@ -425,7 +425,7 @@ handler offering only the permitted calls proves nothing.
 
 | | |
 |---|---|
-| Subgraph | [`journeyman/v0.0.3`](https://api.studio.thegraph.com/query/1759977/journeyman/v0.0.3) on Subgraph Studio, indexing Arc |
+| Subgraph | Manifest targets `arbitrum-sepolia`; not yet deployed to Studio |
 | API | `https://journeyman-production-be62.up.railway.app` — Railway |
 | Web app | [`journeyman-work.vercel.app`](https://journeyman-work.vercel.app) — Vercel |
 | Autopilot daemon | [`independent-presence-production-952d`](https://independent-presence-production-952d.up.railway.app/healthz) — Railway, on a persistent volume |
@@ -586,7 +586,7 @@ is why the handling is the part that got the tests.
 
 ## Roadmap
 
-- [x] Deploy the subgraph to Subgraph Studio — live at `journeyman/v0.0.3`, indexing Arc
+- [ ] Deploy the subgraph to Subgraph Studio on Arbitrum Sepolia
 - [x] Deploy the yield controller carrying the 60/40 split, and attach a venue
 - [ ] Size a job so the freelancer's share is reachable — see Status
 - [ ] Arc mainnet deployment, and attach the v4 adapter to a live pool there
