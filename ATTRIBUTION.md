@@ -1,61 +1,57 @@
 # Attribution
 
-**Atelier is a new product, built for ETHOnline 2026.** It is not a rebrand of
-anything, it has no users, and it makes no claim to traction. This file records
-what it is built on, because "from scratch" does not mean "from nothing" and
-pretending otherwise would be the one dishonest thing in the repo.
+**Journeyman is built for the Arbitrum Open House Singapore Buildathon, on top
+of our own prior open-source work.** The buildathon invites you to "bring an
+existing project or start from scratch"; this is the first of those, and this
+file is the honest accounting of which parts are which.
 
-ETHGlobal's rule is that a project "may not add features to existing work but
-can use boilerplate code." What follows is our boilerplate, named.
+The commit history is the evidence. The first commit is the inherited source,
+labelled as such, and everything after it was written for this event.
 
 ---
 
-## Our own open-source code, used as boilerplate
+## The lineage, in order
 
-We wrote and open-sourced two projects before this event, and Atelier starts
-from parts of both. They are ours, Apache/MIT licensed, and public:
+**SecureFlow** — a milestone escrow protocol. A human client funds a job, a
+human freelancer delivers it, payment releases per milestone, an arbiter settles
+disputes. Deployed on Arc.
 
-| Component | Used for |
-|---|---|
-| An escrow contract | The milestone escrow primitive — deposit, submit, approve, dispute, arbitrate. Atelier's `Atelier.sol` starts here. |
-| A React + Vite dApp scaffold | Wallet connection, contract bindings, the shadcn/Tailwind component layer, and the escrow screens. |
-| An Express service | AI text helpers, the EIP-2771 relayer, Supabase upload/messaging. |
-| An agent daemon | The LLM brief/score/review loop, Circle Agent Wallet integration, x402 plumbing, and the Telegram worker bot. |
+**Patron** — an agent that commissions work: it writes the brief, scores
+applicants, reviews what comes back, and pays over x402. Shortlisted at the
+Encode x Arc hackathon.
 
-Neither prior project did what Atelier does. Neither had a human client
-delegating job management to an agent, an on-chain manager role, productive
-escrow, or one marketplace where agent-posted and human-posted work sit
-together.
+**Atelier** — the merge of the two, built for ETHGlobal ETHOnline 2026. Neither
+source project could do the thing in between: a human client who delegates the
+*managing* of a job — the brief, the shortlist, the reviews — to an agent, while
+keeping the money. Atelier added the on-chain job-manager role that makes that
+safe, the managed-wallet front door, and productive escrow.
 
-## What is new, and was written during this event
+**Journeyman** — this repository. Atelier ported to Arbitrum, with the parts
+that Arc could not run finally running.
 
-- **The Autopilot delegation** — a scoped on-chain job-manager role that may
-  hire, approve and reject and can never pay itself. New contract code, new
-  invariant, 70 contract tests where there were none.
-- **Productive escrow** — idle escrow capital deployed to a Uniswap v4
-  stable-stable position, with a cap derived from the largest imminent claim and
-  a fuzzed solvency invariant.
-- **Atelier the product** — the unified information architecture, the Manual /
-  Autopilot fork, the brief-preview flow, the decision log, the teal/amber actor
-  semantic, and the merged client dashboard.
-- **The managed-worker front door in the app** — signing up with a name, a
-  Circle MPC wallet provisioned behind it, applying with no gas and no
-  signature.
-- **The upgradeable deployment** — UUPS proxy, storage discipline, upgrade
-  safety tests.
+A journeyman is a skilled worker who has finished an apprenticeship and hires
+out by the job. The word comes from the French *journée*, a day's work paid
+daily — which is what milestone escrow is.
+
+## What is inherited
+
+Everything in the first commit: the escrow contract and its tests, the agent
+daemon, the React application, the Express service, and the subgraph.
+
+## What is new, and written for this event
+
+Recorded here as it lands, rather than claimed in advance.
+
+- _(in progress)_
 
 ## Third-party dependencies
 
-OpenZeppelin (contracts and upgradeable), Foundry, React, Vite, TypeScript,
-Tailwind, shadcn/ui, wagmi, Reown AppKit, viem, The Graph tooling, Circle
-Developer-Controlled Wallets, Groq, Supabase, Playwright, Vitest. All used as
-published.
+OpenZeppelin (contracts and upgradeable), Foundry, Uniswap v4, React, Vite,
+TypeScript, Tailwind, shadcn/ui, wagmi, Reown AppKit, viem, The Graph tooling,
+Circle Developer-Controlled Wallets, Groq, Supabase, Playwright, Vitest. All
+used as published.
 
-## The honest summary
+## What is not claimed
 
-Atelier is a new product assembled during ETHOnline 2026 from our own prior
-open-source work plus a large amount of code written this week. The commit
-history is the evidence: `git log` shows it accumulating day by day, and the
-first commit is the boilerplate import, clearly labelled as such.
-
-We are not claiming users, revenue, or traction. There are none.
+No users. No traction. No revenue. The prior projects have their own histories;
+this repository is a hackathon build and is described as one.
