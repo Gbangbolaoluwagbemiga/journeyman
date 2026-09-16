@@ -1,0 +1,37 @@
+{
+  "name": "atelier-agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Patron's guild \u2014 the 24/7 Node daemon. AI agents pay Patron via x402; Patron hires, manages, and pays real humans through on-chain escrow on Arc.",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "circle:setup": "tsx src/circle/wallet-setup.ts",
+    "seed:freelancers": "tsx scripts/seed-freelancers.ts",
+    "seed:submission": "tsx scripts/seed-submission.ts",
+    "e2e": "tsx scripts/e2e-loop.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "circle:dev-wallet": "tsx src/circle/dev-wallet.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.112.3",
+    "@circle-fin/developer-controlled-wallets": "^10.8.0",
+    "@circle-fin/x402-batching": "^3.2.0",
+    "@x402/evm": "^2.19.0",
+    "dotenv": "^16.4.5",
+    "groq-sdk": "^1.4.0",
+    "jose": "^6.2.12",
+    "unpdf": "^1.8.0",
+    "viem": "^2.55.4",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^4.1.11"
+  }
+}

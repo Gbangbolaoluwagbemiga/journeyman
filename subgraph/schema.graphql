@@ -1,0 +1,109 @@
+type Escrow @entity {
+  id: ID!                         # escrowId as string
+  escrowId: BigInt!
+  depositor: Bytes!
+  beneficiary: Bytes!
+  token: Bytes!                   # address(0) = native ETH
+  totalAmount: BigInt!
+  paidAmount: BigInt!
+  platformFee: BigInt!
+  deadline: BigInt!
+  status: Int!                    # 0=Pending 1=InProgress 2=Released 3=Refunded 4=Disputed 5=Expired 6=Cancelled
+  workStarted: Boolean!
+  isOpenJob: Boolean!
+  projectTitle: String!
+  projectDescription: String!
+  # Lifted out of the description at index time rather than stored on-chain.
+  # A category changes nothing about how money moves, so it was not worth a
+  # contract upgrade and a storage slot — but a freelancer browsing the board
+  # wants to filter by it, and that filter belongs in the index.
+  # Null for every escrow created before categories existed.
+  category: String
+  arbiters: [Bytes!]!
+  requiredConfirmations: BigInt!
+
+  # AUTOPILOT DELEGATION
+  #
+  # The agent currently permitted to hire, approve and reject on this escrow —
+  # null when the client manages it themselves. This is the on-chain answer to
+  # "is this job on Autopilot", and it is the only trustworthy one: the agent
+  # daemon's own task table records what the agent believes it manages, which
+  # can be stale by exactly the interval between a client revoking and the
+  # daemon next polling.
+  #
+  # Note this is NOT exposed to freelancers anywhere in the UI. A worker must
+  # not be able to tell whether their client is a person or an agent, and the
+  # subgraph is public — the field being queryable is a deliberate transparency
+  # choice for clients, arbiters and anyone auditing the protocol, not a signal
+  # to surface on a job card.
+  jobManager: Bytes
+  managerEvents: [ManagerEvent!]! @derivedFrom(field: "escrow")
+  milestones: [Milestone!]! @derivedFrom(field: "escrow")
+  applications: [Application!]! @derivedFrom(field: "escrow")
+  ratings: [Rating!]! @derivedFrom(field: "escrow")
+  evidence: [Evidence!]! @derivedFrom(field: "escrow")
+  createdAt: BigInt!
+  updatedAt: BigInt!
+}
+
+type Milestone @entity {
+  id: ID!                         # escrowId-milestoneIndex
+  escrow: Escrow!
+  milestoneIndex: BigInt!
+  amount: BigInt!
+  description: String!
+  status: Int!                    # 0=NotStarted 1=Submitted 2=Approved 3=Rejected 4=Disputed 5=ProposalPending
+  submittedAt: BigInt
+  approvedAt: BigInt
+  disputedAt: BigInt
+  resolvedAt: BigInt
+  proposedAmount: BigInt
+  proposedDescription: String
+}
+
+type Evidence @entity {
+  id: ID!
+  escrow: Escrow!
+  escrowId: BigInt!
+  milestoneIndex: BigInt!
+  submitter: Bytes!
+  cid: String!
+  timestamp: BigInt!
+}
+
+type Application @entity {
+  id: ID!
+  escrow: Escrow!
+  escrowId: BigInt!
+  freelancer: Bytes!
+  coverLetter: String!
+  proposedTimeline: BigInt!
+  timestamp: BigInt!
+}
+
+type Rating @entity {
+  id: ID!                         # escrowId-rater
+  escrow: Escrow!
+  escrowId: BigInt!
+  rater: Bytes!
+  rated: Bytes!
+  score: Int!
+  timestamp: BigInt!
+}
+
+# Every appointment and revocation, kept rather than overwritten.
+#
+# `Escrow.jobManager` answers "who manages this now". This answers "who managed
+# it when that milestone was approved", which is the question that actually
+# matters in a dispute — an arbiter needs to know whether a human or an agent
+# made the call being argued about, and the current pointer cannot tell them.
+type ManagerEvent @entity {
+  id: ID!                         # txHash-logIndex
+  escrow: Escrow!
+  escrowId: BigInt!
+  manager: Bytes!
+  action: String!                 # "set" | "revoked"
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  txHash: Bytes!
+}

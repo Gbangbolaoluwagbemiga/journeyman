@@ -1,0 +1,22 @@
+/*
+ * A SOLUTION FILE. IT COMPILES NOTHING BY ITSELF.
+ *
+ * `files: []` plus `references` is the standard project-references layout, and
+ * it has one sharp edge: `tsc --noEmit` pointed at this file typechecks ZERO
+ * files and exits 0. It looks exactly like a clean run.
+ *
+ * That is not hypothetical. A method was deleted from ContractService by a bad
+ * edit, three call sites kept calling it, `tsc --noEmit` reported success, and
+ * the first anyone knew was a blank page in the browser.
+ *
+ * Use `npm run typecheck` (tsc -b --force), which walks the references. Or
+ * `tsc --noEmit -p tsconfig.app.json` for the app alone.
+ */
+{
+  "files": [],
+  "exclude": ["packages"],
+  "references": [
+    { "path": "./tsconfig.app.json" },
+    { "path": "./tsconfig.node.json" }
+  ]
+}

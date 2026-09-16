@@ -1,0 +1,79 @@
+// seed-submission.ts — the hired freelancer (FREELANCER_1_KEY, the "strong
+// applicant" from seed-freelancers.ts) submits work for a milestone.
+//
+//   npm run seed:submission -- <escrowId> <milestoneIndex> ["submission text"]
+
+import "dotenv/config";
+import { createPublicClient, createWalletClient, http, type Abi } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
+import { arcTestnet, config, rpcUrl } from "../src/config.js";
+import atelierAbi from "../src/web3/AtelierABI.json" with { type: "json" };
+
+const abi = atelierAbi as Abi;
+
+const escrowId = BigInt(process.argv[2] ?? "0");
+const milestoneIndex = BigInt(process.argv[3] ?? "0");
+const description =
+  process.argv[4] ??
+  "Delivered: primary logo mark in SVG and PNG (1200x1200px), plus 2 color variants (light/dark). Link: https://example.com/atelier-logo-draft";
+
+async function main() {
+  // Which seeded freelancer signs. Atelier authorises submitMilestone on the
+  // hired beneficiary, so submitting as the wrong one reverts with a bare
+  // "execution reverted" — which looks like a broken script rather than the
+  // wrong signer. FREELANCER=3 picks the third seeded wallet.
+  const which = process.env.FREELANCER?.trim() || "1";
+  const key = process.env[`FREELANCER_${which}_KEY`]?.trim() as `0x${string}` | undefined;
+  if (!key) {
+    console.error(
+      `FREELANCER_${which}_KEY not set in daemon/.env — run seed:freelancers first and save the printed keys.`,
+    );
+    process.exit(1);
+  }
+
+  const account = privateKeyToAccount(key);
+  const publicClient = createPublicClient({ chain: arcTestnet, transport: http(rpcUrl) });
+  const walletClient = createWalletClient({ account, chain: arcTestnet, transport: http(rpcUrl) });
+
+  console.log(`Submitting milestone ${milestoneIndex} for escrow #${escrowId} as ${account.address}...`);
+
+  // Atelier requires the lifecycle step before a submission is accepted, and
+  // submitMilestone reverts without it. This script didn't call it — so
+  // submitting to a freshly hired escrow failed with a bare "execution
+  // reverted", which reads like a broken submission rather than a missing
+  // transition. The e2e loop always called it; this path never did.
+  // Swallowed on failure because it reverts once work has already started,
+  // which is the normal case for every milestone after the first.
+  try {
+    const startHash = await walletClient.writeContract({
+      chain: arcTestnet,
+      account,
+      address: config.atelierAddress,
+      abi,
+      functionName: "startWork",
+      args: [escrowId],
+    });
+    await publicClient.waitForTransactionReceipt({ hash: startHash });
+    console.log(`  startWork ok — ${startHash}`);
+  } catch {
+    console.log("  (work already started)");
+  }
+
+  const hash = await walletClient.writeContract({
+    chain: arcTestnet,
+    account,
+    address: config.atelierAddress,
+    abi,
+    functionName: "submitMilestone",
+    args: [escrowId, milestoneIndex, description],
+  });
+  await publicClient.waitForTransactionReceipt({ hash });
+
+  console.log(`✓ Submitted — tx ${hash}`);
+  console.log("Atelier's poller (every 15s) will pick this up and review it against the brief.");
+}
+
+main().catch((err) => {
+  console.error("✗ seed:submission failed:", err instanceof Error ? err.message : err);
+  process.exit(1);
+});

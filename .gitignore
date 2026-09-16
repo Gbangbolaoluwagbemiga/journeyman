@@ -1,0 +1,31 @@
+node_modules/
+dist/
+build/
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+coverage/
+.vite/
+
+# OpenZeppelin is declared as a submodule in secureflow/.gitmodules, not
+# vendored. Committing ~2,000 upstream files during the event would bury the
+# work that is actually being judged. Setup:
+#   git clone --depth 1 --branch v5.1.0 \
+#     https://github.com/OpenZeppelin/openzeppelin-contracts \
+#     app/contracts/solidity/lib/openzeppelin-contracts
+app/contracts/solidity/lib/openzeppelin-contracts/
+app/contracts/solidity/lib/openzeppelin-contracts-upgradeable/
+
+# Playwright
+test-results/
+playwright-report/
+blob-report/
+.playwright/
+
+# Patron daemon's local SQLite — machine-local demo state, never shared
+agent/daemon/data/
+
+# Submission screenshots — regenerate with playwright.shots.config.ts
+submission-shots/

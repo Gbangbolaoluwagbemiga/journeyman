@@ -1,0 +1,25 @@
+{
+  /*
+   * The Playwright suite, which had no tsconfig at all.
+   *
+   * Without one, eslint's typed rules could not parse a single e2e file — six
+   * "parserOptions.project has been provided" errors, which is the same hollow
+   * check as a typecheck that compiles nothing: it looked like linting and was
+   * not. 48 tests of real code, unchecked.
+   *
+   * Separate from tsconfig.app.json because these run in Node against a built
+   * app, not in the browser as part of it, and pulling them into the app's
+   * project would put Playwright's globals in the application's type space.
+   */
+  "extends": "./tsconfig.app.json",
+  "compilerOptions": {
+    // These run in Node, so process.env is real here.
+    "types": ["node"],
+    "noEmit": true,
+    "lib": ["ES2022", "DOM"],
+    "moduleResolution": "bundler",
+    "module": "ESNext",
+    "target": "ES2022"
+  },
+  "include": ["e2e/**/*.ts", "playwright.config.ts"]
+}

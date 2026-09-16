@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!--
+    Telegram bot avatar. Telegram crops this to a circle and renders it as small
+    as 40px in a chat list, so the mark is scaled to fill far more of the frame
+    than it would on a website, and nothing but the mark is in here — a wordmark
+    at 40px is a grey smudge.
+  -->
+  <defs>
+    <!-- userSpaceOnUse is required, not stylistic: the crossbar is a horizontal
+         line, so its object bounding box has zero height, and a gradient in
+         objectBoundingBox units on a zero-height box is not rendered at all.
+         With the default units the crossbar silently disappears and the mark
+         reads as a caret rather than an A. -->
+    <linearGradient id="bar" gradientUnits="userSpaceOnUse" x1="21" y1="38" x2="43" y2="38">
+      <stop offset="0%" stop-color="#45C8D6"/>
+      <stop offset="100%" stop-color="#F2C15C"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.42" r="0.62">
+      <stop offset="0%" stop-color="#17222E"/>
+      <stop offset="100%" stop-color="#0B0E13"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="512" height="512" fill="url(#glow)"/>
+
+  <g transform="translate(86 86) scale(5.3125)" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <path d="M32 11 L14 52" stroke="#45C8D6" stroke-width="7"/>
+    <path d="M32 11 L50 52" stroke="#F2C15C" stroke-width="7"/>
+    <path d="M21 38 L43 38" stroke="url(#bar)" stroke-width="6"/>
+  </g>
+</svg>

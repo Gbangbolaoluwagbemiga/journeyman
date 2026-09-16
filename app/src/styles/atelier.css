@@ -1,0 +1,241 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   ATELIER — the actor semantic.
+
+   Two products are being merged, and they arrive with two identities:
+   a navy-and-teal glass surface and an amber-on-black editorial voice.
+   Blending them into a pleasant average would produce a third look that says
+   nothing and is worse than either.
+
+   So the palettes are not blended. They are given a job:
+
+       TEAL  = a human did this.
+       AMBER = the agent did this.
+
+   Every decision, approval, payment and review on a surface carries the colour
+   of whoever made it. An Autopilot job reads amber the whole way down — brief,
+   shortlist, approval — until a dispute pulls a human arbiter in, and from that
+   point the trail turns teal. A freelancer's own work is always teal, because a
+   freelancer is always a human; that is the product.
+
+   The practical payoff: the human/agent boundary is legible in about three
+   seconds, with no legend and no narration. A judge watching a demo can see who
+   is acting without being told.
+
+   HOW TO USE IT
+
+     Put `.actor-human` or `.actor-agent` on a container. Everything inside it
+     reads `--actor` and friends, so nested chips, rules, dots and figures pick
+     up the right colour with no extra classes:
+
+         <li class="actor-agent">        → amber row
+           <span class="actor-dot" />    → amber dot
+           <b class="actor-figure">$50</b>→ amber number
+         </li>
+
+     Set the actor from data, never from a hardcoded class:
+
+         <div className={actorClass(decision.by)}>
+
+   Do NOT use amber for warnings or teal for "info". These two colours mean
+   exactly one thing each now, and a second meaning would destroy the first.
+   Warnings are --destructive; that has not changed.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+:root {
+  /* ── The two actors ──────────────────────────────────────────────────────
+     Light mode. Bright amber on a pale ground is illegible — we learned
+     this the hard way — so the light values are the same hues carried down to
+     a legible lightness rather than the dark-mode swatches reused. */
+  --actor-human: oklch(0.52 0.11 205);
+  --actor-human-fg: oklch(0.99 0.005 240);
+  --actor-human-soft: oklch(0.52 0.11 205 / 0.1);
+  --actor-human-border: oklch(0.52 0.11 205 / 0.28);
+  --actor-human-glow: oklch(0.52 0.11 205 / 0.22);
+
+  --actor-agent: oklch(0.58 0.12 72);
+  --actor-agent-fg: oklch(0.99 0.005 90);
+  --actor-agent-soft: oklch(0.58 0.12 72 / 0.1);
+  --actor-agent-border: oklch(0.58 0.12 72 / 0.28);
+  --actor-agent-glow: oklch(0.58 0.12 72 / 0.22);
+
+  /* Default for anything not yet scoped to an actor. Teal, because the
+     unattributed case on this platform is a person. */
+  --actor: var(--actor-human);
+  --actor-fg: var(--actor-human-fg);
+  --actor-soft: var(--actor-human-soft);
+  --actor-border: var(--actor-human-border);
+  --actor-glow: var(--actor-human-glow);
+
+  /* ── Type ────────────────────────────────────────────────────────────────
+     Fraunces carries the big moments — a headline, a sum paid to a person.
+     Inter keeps doing the work everywhere else. The instinct was right:
+     money moving to a human should not be set in the same face as a form
+     label. */
+  --font-serif-display: "Fraunces", Georgia, "Iowan Old Style", serif;
+}
+
+.dark {
+  /* Dark mode is the real surface — this is where both products live.
+     Teal is lifted off the escrow protocol's accent so the app still feels
+     like itself; amber is #f2c15c, unchanged, because it is the
+     brand and it is already correct on near-black. */
+  --actor-human: oklch(0.78 0.13 199);
+  --actor-human-fg: oklch(0.14 0.02 220);
+  --actor-human-soft: oklch(0.78 0.13 199 / 0.12);
+  --actor-human-border: oklch(0.78 0.13 199 / 0.32);
+  --actor-human-glow: oklch(0.78 0.13 199 / 0.3);
+
+  --actor-agent: oklch(0.83 0.115 81);
+  --actor-agent-fg: oklch(0.16 0.03 70);
+  --actor-agent-soft: oklch(0.83 0.115 81 / 0.12);
+  --actor-agent-border: oklch(0.83 0.115 81 / 0.32);
+  --actor-agent-glow: oklch(0.83 0.115 81 / 0.3);
+
+  --actor: var(--actor-human);
+  --actor-fg: var(--actor-human-fg);
+  --actor-soft: var(--actor-human-soft);
+  --actor-border: var(--actor-human-border);
+  --actor-glow: var(--actor-human-glow);
+}
+
+/* Register with Tailwind so `text-actor`, `bg-actor-soft`, `border-actor`
+   and `font-display` are available as ordinary utilities. */
+@theme inline {
+  --color-actor: var(--actor);
+  --color-actor-fg: var(--actor-fg);
+  --color-actor-soft: var(--actor-soft);
+  --color-actor-border: var(--actor-border);
+
+  --color-actor-human: var(--actor-human);
+  --color-actor-human-soft: var(--actor-human-soft);
+  --color-actor-human-border: var(--actor-human-border);
+
+  --color-actor-agent: var(--actor-agent);
+  --color-actor-agent-soft: var(--actor-agent-soft);
+  --color-actor-agent-border: var(--actor-agent-border);
+
+  --font-display: var(--font-serif-display);
+}
+
+@layer utilities {
+  /* ── Scope switches ──────────────────────────────────────────────────────
+     The only two classes most code needs. Everything below inherits from
+     these, so a row, a card or an entire page can be flipped by changing one
+     class on the container. */
+  .actor-human {
+    --actor: var(--actor-human);
+    --actor-fg: var(--actor-human-fg);
+    --actor-soft: var(--actor-human-soft);
+    --actor-border: var(--actor-human-border);
+    --actor-glow: var(--actor-human-glow);
+  }
+
+  .actor-agent {
+    --actor: var(--actor-agent);
+    --actor-fg: var(--actor-agent-fg);
+    --actor-soft: var(--actor-agent-soft);
+    --actor-border: var(--actor-agent-border);
+    --actor-glow: var(--actor-agent-glow);
+  }
+
+  /* ── Marks ───────────────────────────────────────────────────────────────
+     Small, composable pieces that read the ambient actor. */
+
+  /* A status dot. Sized to sit on a line of body text without shifting it. */
+  .actor-dot {
+    display: inline-block;
+    inline-size: 0.5rem;
+    block-size: 0.5rem;
+    border-radius: 9999px;
+    background: var(--actor);
+    box-shadow: 0 0 0 3px var(--actor-soft);
+    flex: none;
+  }
+
+  /* The left rule down a decision-log entry — the single strongest carrier of
+     the semantic, because a column of them shows a job changing hands. */
+  .actor-rule {
+    border-inline-start: 2px solid var(--actor);
+    padding-inline-start: 1rem;
+  }
+
+  /* An inline label: "Autopilot", "You", "Arbiter". */
+  .actor-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.125rem 0.5rem;
+    border-radius: 9999px;
+    background: var(--actor-soft);
+    border: 1px solid var(--actor-border);
+    color: var(--actor);
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  /* A card that belongs to one actor. Glass, with the actor's edge. */
+  .actor-panel {
+    background: var(--actor-soft);
+    border: 1px solid var(--actor-border);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+
+  .actor-text {
+    color: var(--actor);
+  }
+
+  .actor-glow {
+    box-shadow: 0 0 40px var(--actor-glow);
+  }
+
+  /* ── The one enormous number ─────────────────────────────────────────────
+     The best idea we kept: money paid to a human is the largest thing on the
+     screen, set in the serif, and never abbreviated into a stat tile. Kept
+     here because the point of this platform is that a person got paid. */
+  .actor-figure {
+    font-family: var(--font-serif-display);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums lining-nums;
+    letter-spacing: -0.02em;
+    line-height: 1;
+    color: var(--actor);
+  }
+
+  .figure-xl {
+    font-size: clamp(2.75rem, 9vw, 5.5rem);
+  }
+  .figure-lg {
+    font-size: clamp(2rem, 5vw, 3rem);
+  }
+  .figure-md {
+    font-size: 1.5rem;
+  }
+
+  /* ── Marginalia ──────────────────────────────────────────────────────────
+     The decision-log layout: a narrow left column carrying time and actor,
+     and the reasoning in the main column. Reads as a record rather than a
+     feed, which is the correct register for something a client may later
+     need to argue with. Collapses to a single column on small screens. */
+  .marginalia {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.375rem 1.5rem;
+  }
+
+  @media (min-width: 48rem) {
+    .marginalia {
+      grid-template-columns: 10rem minmax(0, 1fr);
+    }
+  }
+
+  .marginalia-aside {
+    color: var(--muted-foreground);
+    font-size: 0.75rem;
+    line-height: 1.5;
+    font-variant-numeric: tabular-nums;
+  }
+}

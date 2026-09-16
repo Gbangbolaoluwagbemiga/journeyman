@@ -1,0 +1,764 @@
+// store.ts — SQLite persistence for the daemon: tasks, decisions, and payments.
+// Uses node:sqlite (built in, no native compile step — important since this
+// daemon may get deployed to Railway/Fly under time pressure and a native
+// better-sqlite3 build failing on a foreign platform is exactly the kind of
+// thing that eats the last day before submission).
+import { DatabaseSync } from "node:sqlite";
+import path from "node:path";
+import fs from "node:fs";
+
+const DATA_DIR = path.join(process.cwd(), "data");
+fs.mkdirSync(DATA_DIR, { recursive: true });
+
+const DB_PATH = path.join(DATA_DIR, "atelier.db");
+
+/**
+ * The database was named for the product this grew out of. Renaming the file
+ * without moving it would silently open a brand-new empty database: the daemon
+ * would boot fine and every registered worker — including the MPC wallet each
+ * one is paid into — would simply be gone. So carry the old file over, once,
+ * and only when there is no new one to overwrite.
+ */
+const LEGACY_DB_PATH = path.join(DATA_DIR, "patron.db");
+if (!fs.existsSync(DB_PATH) && fs.existsSync(LEGACY_DB_PATH)) {
+  fs.renameSync(LEGACY_DB_PATH, DB_PATH);
+  // SQLite keeps the journal alongside the database; leaving them behind would
+  // strand a hot write-ahead log next to a database that no longer exists.
+  for (const suffix of ["-wal", "-shm", "-journal"]) {
+    if (fs.existsSync(LEGACY_DB_PATH + suffix)) fs.renameSync(LEGACY_DB_PATH + suffix, DB_PATH + suffix);
+  }
+  console.log("[store] carried data/patron.db over to data/atelier.db");
+}
+
+const db = new DatabaseSync(DB_PATH);
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS tasks (
+    id TEXT PRIMARY KEY,
+    escrow_id TEXT,
+    instruction TEXT NOT NULL,
+    client_type TEXT NOT NULL,
+    status TEXT NOT NULL,
+    brief_json TEXT,
+    created_at INTEGER NOT NULL,
+    -- Who commissioned this, when we know. Atelier requires Atelier to be the
+    -- escrow depositor (only the depositor may approve milestones, and the whole
+    -- product is that a machine approves them), so a refund lands with Atelier
+    -- rather than with the client. Recording the payer is what lets Atelier pass
+    -- it back — see /api/jobs/refund.
+    client_address TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS decisions (
+    id TEXT PRIMARY KEY,
+    task_id TEXT NOT NULL,
+    type TEXT NOT NULL,
+    reasoning TEXT NOT NULL,
+    target TEXT,
+    score REAL,
+    timestamp INTEGER NOT NULL
+  );
+
+  -- Who put money INTO the treasury, and who has taken any back out.
+  --
+  -- The treasury is one pooled wallet: anyone can send to it and Atelier spends
+  -- from it to fund escrows. Without this table a depositor's contribution is
+  -- indistinguishable from anyone else's the moment it lands, so there is
+  -- nothing to show them and nothing to bound a withdrawal by.
+  --
+  -- tx_hash is UNIQUE on purpose. A deposit is claimed by reporting a
+  -- transaction, and without that constraint the same transaction could be
+  -- reported ten times and credited ten times over.
+  CREATE TABLE IF NOT EXISTS treasury_ledger (
+    id TEXT PRIMARY KEY,
+    party TEXT NOT NULL,               -- the depositor's address, lowercased
+    direction TEXT NOT NULL,           -- 'deposit' | 'withdrawal' | 'spend' | 'refund'
+    amount_usdc TEXT NOT NULL,
+    tx_hash TEXT UNIQUE,
+    timestamp INTEGER NOT NULL
+  );
+
+  -- Clients who want their commissions followed in a chat.
+  --
+  -- A client is identified only by a wallet address, so there was nowhere to
+  -- send anything: the freelancer got pushed at every step and the person who
+  -- PAID had to keep refreshing a page. This maps an address to a chat.
+  --
+  -- Deliberately NOT signature-gated. Everything it can tell you — applicants,
+  -- scores, the hire, the delivered file — is already public on /decisions and
+  -- /jobs, so subscribing to an address leaks nothing that isn't. Requiring a
+  -- signature would buy no privacy and cost the one thing this feature is for,
+  -- which is being trivially easy to turn on.
+  CREATE TABLE IF NOT EXISTS client_watchers (
+    address TEXT NOT NULL,
+    channel TEXT NOT NULL,
+    channel_ref TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (address, channel, channel_ref)
+  );
+
+  CREATE TABLE IF NOT EXISTS payments (
+    id TEXT PRIMARY KEY,
+    direction TEXT NOT NULL,      -- 'in' (x402 commission) | 'out' (x402 buy) | 'escrow_lock' | 'escrow_release'
+    escrow_id TEXT,
+    amount_usdc TEXT NOT NULL,
+    counterparty TEXT,
+    tx_hash TEXT,
+    reason TEXT,
+    timestamp INTEGER NOT NULL
+  );
+
+  -- Every work review, per milestone, in order. This backs the escalation
+  -- counter: shouldEscalateToHuman() needs the FULL rejection history for a
+  -- milestone, and it used to live in an in-memory Map — so a daemon restart
+  -- (or any Railway redeploy) silently reset someone's revision count to zero
+  -- and handed them unlimited extra rounds. Persisted here so a redeploy
+  -- mid-dispute can't quietly extend a revision cycle forever.
+  CREATE TABLE IF NOT EXISTS review_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    escrow_id TEXT NOT NULL,
+    milestone_index TEXT NOT NULL,
+    review_json TEXT NOT NULL,
+    timestamp INTEGER NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS review_history_milestone
+    ON review_history (escrow_id, milestone_index);
+
+  CREATE TABLE IF NOT EXISTS poller_state (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+
+  -- The managed-worker layer. One row per human who has signed up.
+  --
+  -- handle:   what they call themselves; the only thing they have to choose.
+  -- channel:  which door they came through ('web' | 'telegram'), so a notifier
+  --           knows how to reach them. Not a separate table — a person is a
+  --           person regardless of surface.
+  -- wallet_*: a real Circle MPC wallet Atelier provisioned FOR them. Atelier
+  --           signs on their instruction; no key exists anywhere to export.
+  -- mode:     'managed' (Atelier signs) | 'own' (they signed up with their own
+  --           address and sign for themselves — Atelier only notifies).
+  CREATE TABLE IF NOT EXISTS workers (
+    id TEXT PRIMARY KEY,
+    handle TEXT NOT NULL,
+    channel TEXT NOT NULL,
+    channel_ref TEXT,
+    skills TEXT,
+    wallet_id TEXT,
+    wallet_address TEXT,
+    mode TEXT NOT NULL DEFAULT 'managed',
+    created_at INTEGER NOT NULL
+  );
+
+  CREATE UNIQUE INDEX IF NOT EXISTS workers_channel_ref
+    ON workers (channel, channel_ref) WHERE channel_ref IS NOT NULL;
+  CREATE INDEX IF NOT EXISTS workers_address ON workers (wallet_address);
+`);
+
+// ── Schema migration ────────────────────────────────────────────────────────
+// Older databases predate client_address. CREATE TABLE IF NOT EXISTS will not add
+// a column to a table that already exists, and the deployed daemon runs on a
+// persistent volume that is never rebuilt — so without this, the first query
+// after deploy throws on a column that only exists on fresh installs.
+try {
+  db.exec(`ALTER TABLE tasks ADD COLUMN client_address TEXT`);
+  console.log("[store] added tasks.client_address");
+} catch {
+  // already present — the normal case on every boot after the first
+}
+
+// ── One-time repairs ────────────────────────────────────────────────────────
+// Guarded by a marker table so each runs exactly once per database, ever. The
+// completed-task re-check in particular MUST NOT run on every boot: it would
+// hand every finished job back to the poller on each restart and re-broadcast
+// its completion, so the command center would replay old jobs finishing every
+// time the daemon redeployed.
+db.exec(`CREATE TABLE IF NOT EXISTS applied_repairs (name TEXT PRIMARY KEY, applied_at INTEGER NOT NULL);`);
+
+function repairOnce(name: string, run: () => void): void {
+  const done = db.prepare(`SELECT 1 FROM applied_repairs WHERE name = ?`).get(name);
+  if (done) return;
+  run();
+  db.prepare(`INSERT INTO applied_repairs (name, applied_at) VALUES (?, ?)`).run(name, Date.now());
+}
+
+// ── Repair of rows written by three now-fixed bugs ──────────────────────────
+// Both fixes above stop BAD rows being written from here on, but a database
+// that already has them (including the deployed one, which sits on a
+// persistent volume and is never rebuilt) would keep showing them forever.
+// Both WHERE clauses are deliberately narrow, and both log what they touched
+// rather than repairing silently.
+repairOnce("2026-08-remove-phantom-payments-and-stranded-tasks", () => {
+  // 1. Payments that were never payments. The direction ternary used to fall
+  //    through to "escrow_lock" for ANY event carrying a txHash, so accepting
+  //    an applicant / requesting a revision / escalating a dispute all got
+  //    filed as money movements — always with an empty amount, since no money
+  //    moved. Real transactions, but not payments.
+  const phantom = db
+    .prepare(
+      `DELETE FROM payments
+        WHERE direction = 'escrow_lock'
+          AND (amount_usdc IS NULL OR amount_usdc = '')
+          AND reason NOT IN ('job_posted', 'payment_released', 'portfolio_verified', 'x402_hire_fee')`,
+    )
+    .run();
+  if (phantom.changes) console.log(`[store] removed ${phantom.changes} phantom payment row(s) — see the payment-direction fix`);
+
+  // 2. Jobs stranded mid-brief. runHireFlow inserted the row as "briefing"
+  //    before calling the LLM and opening escrow; if either threw, nothing
+  //    ever moved the row on. No escrow id means no commission was ever
+  //    opened, so these are failures, and counting them as in-progress
+  //    overstated the amount of live work.
+  const stranded = db
+    .prepare(`UPDATE tasks SET status = 'failed' WHERE status = 'briefing' AND escrow_id IS NULL AND created_at < ?`)
+    .run(Date.now() - 10 * 60 * 1000);
+  if (stranded.changes) console.log(`[store] marked ${stranded.changes} stranded briefing task(s) as failed`);
+
+  // 3. Jobs marked complete on a partial payout. Completion was briefly derived
+  //    from the milestone list the subgraph returns, but the subgraph only
+  //    indexes milestones that have been interacted with — so a 3-milestone job
+  //    with its first milestone approved came back as a one-element, all-approved
+  //    list and was declared finished with two thirds of the budget unpaid.
+  //    Rather than guess which rows are affected (that needs subgraph reads this
+  //    module has no business making at import time), hand every completed job
+  //    back to the poller: it re-derives completion against the brief's real
+  //    milestone count on its next pass and re-marks the genuinely finished ones
+  //    within a cycle.
+  const recheck = db.prepare(`UPDATE tasks SET status = 'active' WHERE status = 'completed' AND escrow_id IS NOT NULL`).run();
+  if (recheck.changes) console.log(`[store] re-queued ${recheck.changes} completed task(s) for completion re-check`);
+});
+
+repairOnce("2026-08-clear-stranded-scoring-markers", () => {
+  // The poller used to write its "already scored N applicants" marker BEFORE
+  // doing the scoring, so a job whose only attempt failed (a rate limit, a
+  // timeout) kept a marker claiming work that never happened and was skipped
+  // forever after. The ordering is fixed going forward, but a database that
+  // already holds one of those markers stays stuck on its own.
+  //
+  // Narrow by construction: only jobs still sitting at 'posted' that have no
+  // decision rows at all. A job with any decision was genuinely scored, and a
+  // job past 'posted' has moved on regardless.
+  const cleared = db
+    .prepare(
+      `DELETE FROM poller_state
+        WHERE key LIKE 'scored_applications:%'
+          AND SUBSTR(key, LENGTH('scored_applications:') + 1) IN (
+            SELECT t.escrow_id FROM tasks t
+             WHERE t.status = 'posted' AND t.escrow_id IS NOT NULL
+               AND NOT EXISTS (SELECT 1 FROM decisions d WHERE d.task_id = t.escrow_id)
+          )`,
+    )
+    .run();
+  if (cleared.changes) console.log(`[store] cleared ${cleared.changes} stranded scoring marker(s) — those jobs will be scored on the next poll`);
+});
+
+repairOnce("2026-08-dedupe-rescored-decisions-v2", () => {
+  // The poller's scored-applicant counter was in-memory, so each restart made it
+  // re-score every open job. Escrow #31 held 27 rows for 3 applicants.
+  //
+  // Text-matching can't find these: the model reworded every re-score, so all 27
+  // reasonings are byte-distinct while describing the same three verdicts. The
+  // real key is (job, applicant) — an applicant is scored once per job, verified
+  // once, and hired once.
+  //
+  // Scoped deliberately to those three types. work_approved / work_rejected /
+  // escalated legitimately repeat for the same freelancer on the same job —
+  // that IS the revision cycle — and must not be collapsed.
+  // Grouped on rowid, not id: `decisions.id` is a random UUID, so MIN(id) would
+  // pick the lexicographically smallest rather than the one written first.
+  const dupes = db
+    .prepare(
+      `DELETE FROM decisions
+        WHERE type IN ('application_scored', 'portfolio_verified', 'applicant_accepted')
+          AND rowid NOT IN (
+            SELECT MIN(rowid) FROM decisions
+             WHERE type IN ('application_scored', 'portfolio_verified', 'applicant_accepted')
+             GROUP BY task_id, type, COALESCE(target, '')
+          )`,
+    )
+    .run();
+  if (dupes.changes) console.log(`[store] removed ${dupes.changes} re-scored duplicate decision row(s)`);
+});
+
+export interface TaskRow {
+  id: string;
+  escrowId: string | null;
+  instruction: string;
+  clientType: "agent" | "human";
+  status: string;
+  briefJson: string | null;
+  createdAt: number;
+  /** The address that commissioned this, when known — the refund destination. */
+  clientAddress?: string | null;
+}
+
+export function insertTask(task: Omit<TaskRow, "createdAt">): void {
+  db.prepare(
+    `INSERT INTO tasks (id, escrow_id, instruction, client_type, status, brief_json, created_at, client_address)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(
+    task.id,
+    task.escrowId,
+    task.instruction,
+    task.clientType,
+    task.status,
+    task.briefJson,
+    Date.now(),
+    task.clientAddress ?? null,
+  );
+}
+
+/**
+ * Forget a task entirely.
+ *
+ * Used when a client revokes Autopilot on a job we had adopted: the contract
+ * stops accepting our calls immediately, so keeping the row would leave the
+ * board badging a job the agent is no longer allowed to touch.
+ */
+export function deleteTask(id: string): void {
+  db.prepare(`DELETE FROM decisions WHERE task_id = ?`).run(id);
+  db.prepare(`DELETE FROM tasks WHERE id = ?`).run(id);
+}
+
+export function updateTaskStatus(id: string, status: string, escrowId?: string): void {
+  if (escrowId) {
+    db.prepare(`UPDATE tasks SET status = ?, escrow_id = ? WHERE id = ?`).run(status, escrowId, id);
+  } else {
+    db.prepare(`UPDATE tasks SET status = ? WHERE id = ?`).run(status, id);
+  }
+}
+
+export function updateTaskBrief(id: string, briefJson: string): void {
+  db.prepare(`UPDATE tasks SET brief_json = ? WHERE id = ?`).run(briefJson, id);
+}
+
+/** Column names to field names, in one place so every task query agrees. */
+function toTaskRow(r: any): TaskRow {
+  return {
+    id: r.id,
+    escrowId: r.escrow_id,
+    instruction: r.instruction,
+    clientType: r.client_type,
+    status: r.status,
+    briefJson: r.brief_json,
+    createdAt: r.created_at,
+    clientAddress: r.client_address ?? null,
+  };
+}
+
+export function listTasks(limit = 50): TaskRow[] {
+  const rows = db.prepare(`SELECT * FROM tasks ORDER BY created_at DESC LIMIT ?`).all(limit) as any[];
+  return rows.map(toTaskRow);
+}
+
+export function recordDecision(d: {
+  id: string;
+  taskId: string;
+  type: string;
+  reasoning: string;
+  target?: string;
+  score?: number;
+  timestamp: number;
+}): void {
+  db.prepare(
+    `INSERT OR REPLACE INTO decisions (id, task_id, type, reasoning, target, score, timestamp)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  ).run(d.id, d.taskId, d.type, d.reasoning, d.target ?? null, d.score ?? null, d.timestamp);
+}
+
+/**
+ * Decisions, newest first.
+ *
+ * The offset matters more than it looks. This was capped at 100 with no way to
+ * ask for anything older, and production was sitting at 98 — so within days
+ * the ledger would have started dropping its own history off the bottom with
+ * nothing on screen to say so. "Every decision the agent has ever made,
+ * verbatim" is the claim the whole project rests on; silently truncating it is
+ * the one failure that turns that claim into a lie.
+ */
+export function listDecisions(limit = 100, offset = 0): any[] {
+  return db.prepare(`SELECT * FROM decisions ORDER BY timestamp DESC LIMIT ? OFFSET ?`).all(limit, offset);
+}
+
+/** How many there are in total, so a reader knows what they're paging through. */
+export function countDecisions(): number {
+  const row = db.prepare(`SELECT COUNT(*) AS n FROM decisions`).get() as { n: number };
+  return Number(row?.n ?? 0);
+}
+
+export function recordPayment(p: {
+  id: string;
+  direction: "in" | "out" | "escrow_lock" | "escrow_release";
+  escrowId?: string;
+  amountUsdc: string;
+  counterparty?: string;
+  txHash?: string;
+  reason?: string;
+}): void {
+  db.prepare(
+    `INSERT INTO payments (id, direction, escrow_id, amount_usdc, counterparty, tx_hash, reason, timestamp)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(p.id, p.direction, p.escrowId ?? null, p.amountUsdc, p.counterparty ?? null, p.txHash ?? null, p.reason ?? null, Date.now());
+}
+
+/**
+ * Record a payment that a later pass might try to record again.
+ *
+ * recordPayment takes a fresh uuid every call, so a poller that re-settles the
+ * same escrow writes the payout twice and the ledger doubles. This one is keyed
+ * on a caller-supplied id, so re-running is a no-op.
+ */
+export function recordPaymentOnce(p: {
+  id: string;
+  direction: "in" | "out" | "escrow_lock" | "escrow_release";
+  escrowId?: string;
+  amountUsdc: string;
+  counterparty?: string;
+  txHash?: string;
+  reason?: string;
+}): void {
+  db.prepare(
+    `INSERT OR IGNORE INTO payments (id, direction, escrow_id, amount_usdc, counterparty, tx_hash, reason, timestamp)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(p.id, p.direction, p.escrowId ?? null, p.amountUsdc, p.counterparty ?? null, p.txHash ?? null, p.reason ?? null, Date.now());
+}
+
+/** Who Atelier hired for this escrow, per its own decision record. */
+export function hiredFor(escrowId: string): string | null {
+  const row = db
+    .prepare(`SELECT target FROM decisions WHERE task_id = ? AND type = 'applicant_accepted' AND target IS NOT NULL ORDER BY timestamp DESC LIMIT 1`)
+    .get(escrowId) as { target?: string } | undefined;
+  return row?.target ?? null;
+}
+
+export function listPayments(limit = 100, offset = 0): any[] {
+  return db.prepare(`SELECT * FROM payments ORDER BY timestamp DESC LIMIT ? OFFSET ?`).all(limit, offset);
+}
+
+export function countPayments(): number {
+  const row = db.prepare(`SELECT COUNT(*) AS n FROM payments`).get() as { n: number };
+  return Number(row?.n ?? 0);
+}
+
+/**
+ * Money in and money out, summed in SQL over EVERY row.
+ *
+ * The page headline reads "$X received from machines, $Y released to humans",
+ * and it was computed by adding up whatever rows the browser happened to be
+ * holding. Paginate that naively and the headline silently becomes "the totals
+ * for page 3" — a ledger quoting a wrong total is worse than a ledger that is
+ * merely long, so the totals have to come from the whole table, not the page.
+ */
+export function paymentTotals(): { in: number; out: number } {
+  const row = db
+    .prepare(
+      `SELECT
+         COALESCE(SUM(CASE WHEN direction = 'in' THEN CAST(amount_usdc AS REAL) ELSE 0 END), 0) AS total_in,
+         COALESCE(SUM(CASE WHEN direction = 'escrow_release' THEN CAST(amount_usdc AS REAL) ELSE 0 END), 0) AS total_out
+       FROM payments`,
+    )
+    .get() as { total_in: number; total_out: number };
+  return { in: Number(row?.total_in ?? 0), out: Number(row?.total_out ?? 0) };
+}
+
+/**
+ * Commissions for the public board — everything EXCEPT rows that never opened
+ * an escrow.
+ *
+ * The board filtered "failed" out in the browser, which is fine when you hold
+ * every row and wrong the moment you page: the server would send 20, the page
+ * would drop 3, and the reader would get a short page under a control that
+ * promised 20 of 60. Excluded in SQL so the count and the page agree.
+ */
+export function listCommissions(limit = 20, offset = 0): TaskRow[] {
+  const rows = db
+    .prepare(`SELECT * FROM tasks WHERE status != 'failed' ORDER BY created_at DESC LIMIT ? OFFSET ?`)
+    .all(limit, offset) as any[];
+  return rows.map(toTaskRow);
+}
+
+export function countCommissions(): number {
+  const row = db.prepare(`SELECT COUNT(*) AS n FROM tasks WHERE status != 'failed'`).get() as { n: number };
+  return Number(row?.n ?? 0);
+}
+
+// ── Review history (backs the escalation counter) ───────────────────────────
+// Keyed by escrow + milestone. Stored as JSON because WorkReviewResult is the
+// LLM's structured output and we want the whole thing back verbatim — the
+// escalation decision reads `approved`, but the reasoning is what a human
+// arbiter needs if it ever gets that far.
+
+export function appendReview(escrowId: string, milestoneIndex: string, review: unknown): void {
+  db.prepare(
+    `INSERT INTO review_history (escrow_id, milestone_index, review_json, timestamp) VALUES (?, ?, ?, ?)`,
+  ).run(escrowId, milestoneIndex, JSON.stringify(review), Date.now());
+}
+
+export function listReviews<T>(escrowId: string, milestoneIndex: string): T[] {
+  const rows = db
+    .prepare(`SELECT review_json FROM review_history WHERE escrow_id = ? AND milestone_index = ? ORDER BY id ASC`)
+    .all(escrowId, milestoneIndex) as { review_json: string }[];
+  return rows.map((r) => JSON.parse(r.review_json) as T);
+}
+
+/** Called once a milestone is approved — that cycle is closed, the next one starts fresh. */
+export function clearReviews(escrowId: string, milestoneIndex: string): void {
+  db.prepare(`DELETE FROM review_history WHERE escrow_id = ? AND milestone_index = ?`).run(escrowId, milestoneIndex);
+}
+
+// ── Poller state ────────────────────────────────────────────────────────────
+// Small durable key/value for the background poller's dedup counters. These
+// used to be in-memory Maps, which meant every daemon restart — including every
+// Railway redeploy — made the poller forget what it had already done and score
+// every open job's applicants again from scratch. Escrow #31 accumulated 27
+// decision rows for 3 applicants, the same verdicts over and over, and each
+// repeat was a real LLM call. Worse, a re-score can re-enter the hire path for
+// a job that already has a freelancer.
+
+export function getPollerInt(key: string): number | null {
+  const row = db.prepare(`SELECT value FROM poller_state WHERE key = ?`).get(key) as { value: string } | undefined;
+  if (!row) return null;
+  const n = Number(row.value);
+  return Number.isFinite(n) ? n : null;
+}
+
+// ── Workers (the managed-worker layer) ──────────────────────────────────────
+
+export interface WorkerRow {
+  id: string;
+  handle: string;
+  channel: "web" | "telegram";
+  channelRef: string | null;
+  skills: string | null;
+  walletId: string | null;
+  walletAddress: string | null;
+  mode: "managed" | "own";
+  createdAt: number;
+}
+
+function toWorker(r: Record<string, unknown>): WorkerRow {
+  return {
+    id: r.id as string,
+    handle: r.handle as string,
+    channel: r.channel as "web" | "telegram",
+    channelRef: (r.channel_ref as string | null) ?? null,
+    skills: (r.skills as string | null) ?? null,
+    walletId: (r.wallet_id as string | null) ?? null,
+    walletAddress: (r.wallet_address as string | null) ?? null,
+    mode: r.mode as "managed" | "own",
+    createdAt: r.created_at as number,
+  };
+}
+
+export function insertWorker(w: Omit<WorkerRow, "createdAt">): WorkerRow {
+  db.prepare(
+    `INSERT INTO workers (id, handle, channel, channel_ref, skills, wallet_id, wallet_address, mode, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(w.id, w.handle, w.channel, w.channelRef, w.skills, w.walletId, w.walletAddress, w.mode, Date.now());
+  return getWorker(w.id)!;
+}
+
+export function getWorker(id: string): WorkerRow | null {
+  const r = db.prepare(`SELECT * FROM workers WHERE id = ?`).get(id) as Record<string, unknown> | undefined;
+  return r ? toWorker(r) : null;
+}
+
+/** Look a worker up by the door they came through — Telegram user id, or a web session handle. */
+/**
+ * Find an account by the identity it signed in with.
+ *
+ * Matched case-insensitively. An email address is not case-sensitive in the
+ * part that matters, but this column is — so "Me@Gmail.com" and "me@gmail.com"
+ * were two different people holding two different wallets, and the second one
+ * would look to its owner exactly like their money had vanished. Google returns
+ * a normalised address today; that is a convention, not a guarantee, and the
+ * cost of it changing is somebody's balance.
+ */
+export function getWorkerByChannelRef(channel: string, channelRef: string): WorkerRow | null {
+  const r = db
+    .prepare(`SELECT * FROM workers WHERE channel = ? AND LOWER(channel_ref) = LOWER(?)`)
+    .get(channel, channelRef) as Record<string, unknown> | undefined;
+  return r ? toWorker(r) : null;
+}
+
+/** Reverse lookup from an on-chain address — this is how an applicant seen on the
+ *  subgraph is matched back to a person we can notify. */
+export function getWorkerByAddress(address: string): WorkerRow | null {
+  const r = db.prepare(`SELECT * FROM workers WHERE LOWER(wallet_address) = LOWER(?)`).get(address) as
+    | Record<string, unknown>
+    | undefined;
+  return r ? toWorker(r) : null;
+}
+
+export function listWorkers(limit = 100): WorkerRow[] {
+  return (db.prepare(`SELECT * FROM workers ORDER BY created_at DESC LIMIT ?`).all(limit) as Record<string, unknown>[]).map(
+    toWorker,
+  );
+}
+
+export function setWorkerWallet(id: string, walletId: string, walletAddress: string): void {
+  db.prepare(`UPDATE workers SET wallet_id = ?, wallet_address = ? WHERE id = ?`).run(walletId, walletAddress, id);
+}
+
+export function setWorkerSkills(id: string, skills: string): void {
+  db.prepare(`UPDATE workers SET skills = ? WHERE id = ?`).run(skills, id);
+}
+
+/** Graduation: a managed worker moves to their own wallet. Mode A is a ramp, not a trap. */
+export function setWorkerOwnWallet(id: string, address: string): void {
+  db.prepare(`UPDATE workers SET wallet_address = ?, wallet_id = NULL, mode = 'own' WHERE id = ?`).run(address, id);
+}
+
+/*
+ * The same table, for the things that are not counters.
+ *
+ * `value` has always been TEXT — setPollerInt stringifies on the way in and
+ * Number()s on the way out — so a caller that wants to keep a string does not
+ * need a second table. Used for a client's hand-over choices: the acceptance
+ * criteria they approved and how long they want applications left open.
+ */
+export function getPollerText(key: string): string | null {
+  const row = db.prepare(`SELECT value FROM poller_state WHERE key = ?`).get(key) as { value: string } | undefined;
+  return row?.value ?? null;
+}
+
+export function setPollerText(key: string, value: string): void {
+  db.prepare(
+    `INSERT INTO poller_state (key, value, updated_at) VALUES (?, ?, ?)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+  ).run(key, value, Date.now());
+}
+
+export function setPollerInt(key: string, value: number): void {
+  db.prepare(
+    `INSERT INTO poller_state (key, value, updated_at) VALUES (?, ?, ?)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+  ).run(key, String(value), Date.now());
+}
+
+// ── Treasury ledger ─────────────────────────────────────────────────────────
+
+/** Record a verified deposit or a completed withdrawal. Returns false if the tx was already recorded. */
+export function recordTreasuryEntry(e: {
+  id: string;
+  party: string;
+  direction: "deposit" | "withdrawal" | "spend" | "refund";
+  amountUsdc: string;
+  txHash?: string;
+}): boolean {
+  try {
+    db.prepare(
+      `INSERT INTO treasury_ledger (id, party, direction, amount_usdc, tx_hash, timestamp)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+    ).run(e.id, e.party.toLowerCase(), e.direction, e.amountUsdc, e.txHash ?? null, Date.now());
+    return true;
+  } catch {
+    // UNIQUE(tx_hash) — this transaction has already been credited.
+    return false;
+  }
+}
+
+/**
+ * What one party has put in, taken back out, and COMMITTED to commissions.
+ *
+ * Spends matter as much as withdrawals. A depositor who commissions $3 of work
+ * has spent $3 of their own deposit — it is on its way to a freelancer. Leaving
+ * it in their claim would let the same $3 be posted as a job and then also
+ * withdrawn, which is the pot paying twice for one deposit.
+ */
+export function treasuryAccount(party: string): {
+  deposited: number;
+  withdrawn: number;
+  spent: number;
+  refunded: number;
+  net: number;
+} {
+  const row = db
+    .prepare(
+      `SELECT
+         COALESCE(SUM(CASE WHEN direction = 'deposit'    THEN CAST(amount_usdc AS REAL) ELSE 0 END), 0) AS dep,
+         COALESCE(SUM(CASE WHEN direction = 'withdrawal' THEN CAST(amount_usdc AS REAL) ELSE 0 END), 0) AS wdr,
+         COALESCE(SUM(CASE WHEN direction = 'spend'      THEN CAST(amount_usdc AS REAL) ELSE 0 END), 0) AS spd,
+         COALESCE(SUM(CASE WHEN direction = 'refund'     THEN CAST(amount_usdc AS REAL) ELSE 0 END), 0) AS ref
+       FROM treasury_ledger WHERE party = ?`,
+    )
+    .get(party.toLowerCase()) as { dep: number; wdr: number; spd: number; ref: number };
+  const deposited = Number(row?.dep ?? 0);
+  const withdrawn = Number(row?.wdr ?? 0);
+  const spent = Number(row?.spd ?? 0);
+  // Money committed to a job that came back — an arbiter splitting an escrow,
+  // or a commission nobody qualified for. It was spent and then it wasn't, so
+  // it has to return to what this client can commission or withdraw.
+  const refunded = Number(row?.ref ?? 0);
+  return { deposited, withdrawn, spent, refunded, net: Math.max(0, deposited - withdrawn - spent + refunded) };
+}
+
+export function treasuryEntries(party: string, limit = 50): any[] {
+  return db
+    .prepare(`SELECT * FROM treasury_ledger WHERE party = ? ORDER BY timestamp DESC LIMIT ?`)
+    .all(party.toLowerCase(), limit);
+}
+
+/** Everything every depositor still has a claim on, pooled. */
+export function treasuryClaimsTotal(): number {
+  const row = db
+    .prepare(
+      `SELECT
+         COALESCE(SUM(CASE WHEN direction = 'deposit'    THEN CAST(amount_usdc AS REAL) ELSE 0 END), 0) -
+         COALESCE(SUM(CASE WHEN direction = 'withdrawal' THEN CAST(amount_usdc AS REAL) ELSE 0 END), 0) AS net
+       FROM treasury_ledger`,
+    )
+    .get() as { net: number };
+  return Math.max(0, Number(row?.net ?? 0));
+}
+
+/**
+ * Correct a treasury entry that was written from an unverified figure.
+ *
+ * Escrow #56 was credited a $2.50 "refund" inferred from the brief's milestone
+ * split, while the contract said the arbiter had awarded $1.25. The client's
+ * balance was wrong by the difference. Rewriting the row rather than posting a
+ * second correcting entry, because a ledger that shows a refund and then a
+ * mysterious adjustment is harder to trust than one that shows the right
+ * number with the reason recorded in the code that fixed it.
+ */
+/**
+ * Rewrite a ledger entry's amount. Returns true only when the figure actually
+ * moved — SQLite counts a row as changed even when the new value is identical,
+ * and a repair that reports success on every boot teaches you to ignore it.
+ */
+export function correctTreasuryEntry(txHash: string, amountUsdc: string): boolean {
+  const r = db
+    .prepare(`UPDATE treasury_ledger SET amount_usdc = ? WHERE tx_hash = ? AND CAST(amount_usdc AS REAL) != CAST(? AS REAL)`)
+    .run(amountUsdc, txHash, amountUsdc);
+  return Number(r.changes) > 0;
+}
+
+// ── Client watchers ─────────────────────────────────────────────────────────
+
+export function watchClient(address: string, channel: string, channelRef: string): void {
+  db.prepare(
+    `INSERT OR REPLACE INTO client_watchers (address, channel, channel_ref, created_at) VALUES (?, ?, ?, ?)`,
+  ).run(address.toLowerCase(), channel, channelRef, Date.now());
+}
+
+export function unwatchClient(channel: string, channelRef: string): number {
+  return db.prepare(`DELETE FROM client_watchers WHERE channel = ? AND channel_ref = ?`).run(channel, channelRef).changes as number;
+}
+
+/** Every chat following this client address. */
+export function watchersFor(address: string): { channel: string; channelRef: string }[] {
+  return (
+    db.prepare(`SELECT channel, channel_ref FROM client_watchers WHERE address = ?`).all(address.toLowerCase()) as any[]
+  ).map((r) => ({ channel: r.channel, channelRef: r.channel_ref }));
+}
+
+/** What one chat is following, so /watching can answer honestly. */
+export function watchedBy(channel: string, channelRef: string): string[] {
+  return (
+    db.prepare(`SELECT address FROM client_watchers WHERE channel = ? AND channel_ref = ?`).all(channel, channelRef) as any[]
+  ).map((r) => r.address);
+}

@@ -1,0 +1,1014 @@
+// telegram.ts — the second door into the worker layer.
+//
+// This is a shell. Every action it performs is a call into workers/service.ts,
+// the same functions the /work page calls. That is the whole point of having
+// built the layer first: this file adds a surface, not a feature, and if it
+// were deleted tomorrow nothing else would change.
+//
+// Long-polling (getUpdates) rather than webhooks, deliberately: no public
+// callback URL, no second service, no inbound port. It runs inside the daemon
+// that is already deployed, needing nothing but a bot token — and if that token
+// is absent the bot simply doesn't start and the rest of Atelier is unaffected.
+
+import * as store from "../store.js";
+import * as workers from "./service.js";
+import * as atelier from "../web3/atelier.js";
+import { config } from "../config.js";
+import { llmPaused, llmPauseRemaining } from "../llm-status.js";
+
+const API = (method: string) => `https://api.telegram.org/bot${config.telegramBotToken}/${method}`;
+
+interface TgUser {
+  id: number;
+  first_name?: string;
+  username?: string;
+}
+interface TgMessage {
+  message_id: number;
+  from?: TgUser;
+  chat: { id: number };
+  text?: string;
+}
+interface TgUpdate {
+  update_id: number;
+  message?: TgMessage;
+  callback_query?: { id: string; from: TgUser; message?: TgMessage; data?: string };
+}
+
+/**
+ * What the bot is waiting for from a given chat.
+ *
+ * In-memory on purpose, and worth saying why given how much state in this
+ * project was moved INTO SQLite this week: the difference is consequence.
+ * A half-typed cover letter lost to a restart costs someone one retype. A lost
+ * revision count silently grants unlimited revision rounds and a lost scoring
+ * marker skips a job forever — those had to be durable. This does not, and
+ * persisting every keystroke of conversation state would be complexity bought
+ * for nothing. Identity and wallets, the parts that matter, live in `workers`.
+ */
+type Pending =
+  | { kind: "handle" }
+  | { kind: "cover"; escrowId: string }
+  | { kind: "portfolio"; escrowId: string; coverLetter: string }
+  | { kind: "deliverable"; escrowId: string }
+  | { kind: "withdraw" }
+  /** Address is known; now we need to know HOW MUCH. */
+  | { kind: "withdraw-amount"; destination: `0x${string}`; available: number };
+
+const pending = new Map<number, Pending>();
+
+/**
+ * @param quietTransport suppress logging for network-level failures.
+ *   getUpdates is a long poll: it is SUPPOSED to sit open for 25 seconds, and a
+ *   connection that drops or times out is ordinary weather, not news. Logging
+ *   each one buried every other line in the daemon's output. The loop reports
+ *   the outage once instead, and reports recovery once.
+ *   API-level failures (ok:false) are always logged -- those mean the bot is
+ *   misconfigured or the token is wrong, which never fixes itself.
+ */
+async function call<T = unknown>(
+  method: string,
+  body: Record<string, unknown>,
+  quietTransport = false,
+): Promise<T | null> {
+  try {
+    const res = await fetch(API(method), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(35_000),
+    });
+    const json = (await res.json()) as { ok: boolean; result?: T; description?: string };
+    if (!json.ok) {
+      console.warn(`[telegram] ${method} failed: ${json.description}`);
+      return null;
+    }
+    return json.result ?? null;
+  } catch (err) {
+    // A network blip must never kill the poll loop.
+    if (!quietTransport) console.warn(`[telegram] ${method} error:`, err instanceof Error ? err.message : err);
+    return null;
+  }
+}
+
+/**
+ * Make text safe to drop inside an HTML-parsed message.
+ *
+ * Every message this bot sends is parse_mode: HTML, and nothing was escaped.
+ * Most of what gets interpolated is written by an LLM or by a user — scoring
+ * reasoning, cover letters, handles, job titles — so a single "<" or "&"
+ * anywhere in it makes Telegram reject the ENTIRE message as malformed
+ * entities. Not truncate: reject. The person is simply never told they were
+ * rejected, or hired, or paid.
+ */
+export function esc(text: unknown): string {
+  return String(text ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+/**
+ * Send, and fall back to plain text if the markup is the problem.
+ *
+ * The escaping above is the fix; this is the guarantee. A notification that
+ * silently evaporates because some model wrote "under <3s" in its reasoning is
+ * unacceptable when the message is "you weren't hired" or "your work was
+ * rejected" — those are the ones people are waiting on. If Telegram refuses to
+ * parse it, the message still goes, just without formatting.
+ */
+async function send(chatId: number, text: string, keyboard?: { text: string; callback_data: string }[][]) {
+  const body = {
+    chat_id: chatId,
+    text,
+    disable_web_page_preview: true,
+    ...(keyboard ? { reply_markup: { inline_keyboard: keyboard } } : {}),
+  };
+  const sent = await call("sendMessage", { ...body, parse_mode: "HTML" });
+  if (sent !== null) return sent;
+
+  // Strip the tags rather than showing someone raw <b> markup.
+  const plain = text.replace(/<\/?[a-z][^>]*>/gi, "").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
+  console.warn(`[telegram] HTML send to ${chatId} failed — retrying as plain text`);
+  return call("sendMessage", { ...body, text: plain });
+}
+
+function workerFor(tgUserId: number) {
+  return store.getWorkerByChannelRef("telegram", String(tgUserId));
+}
+
+/* Was hardcoded to a previous product's deployment, so every link the bot sent
+   took a freelancer to the wrong app entirely. Set PUBLIC_APP_URL on deploy. */
+const WEB = config.publicAppUrl;
+
+/**
+ * Testers said the bot felt like "one linear thing" with no sense of what else
+ * it could do. That was fair — the old help was five lines and mentioned nothing
+ * about who you are, what you hold, or where to see the AI's actual reasoning.
+ * Discoverability is a feature; a capable tool that hides its capabilities is
+ * just a confusing one.
+ */
+const HELP = [
+  "🎨 <b>Atelier</b> — an AI posts a job, locks the money before anyone applies, and pays you when your work is accepted.",
+  "",
+  "<b>Finding work</b>",
+  "/jobs — everything open right now",
+  "/jobs logo — filter by word",
+  "/jobs 5 — only jobs paying $5 or more",
+  "",
+  "<b>Doing the work</b>",
+  "/submit &lt;id&gt; — send in finished work (the id is on the job)",
+  "/mine — jobs you've applied to or been hired for",
+  "/job &lt;id&gt; — who applied to a job and how each was graded",
+  "",
+  "<b>Your money</b>",
+  "/balance — what you've earned",
+  "/wallet — your address, and how custody actually works",
+  "/withdraw — send earnings to any address you control",
+  "",
+  "<b>Hiring, rather than working</b>",
+  "/watch 0x… — follow commissions you paid for: applicants, the hire, the delivered file, the payout",
+  "/unwatch — stop following",
+  "",
+  "<b>You</b>",
+  "/profile — your handle, skills and rating",
+  "/skills &lt;text&gt; — tell Atelier what you do",
+  "/link 0x… — use your own wallet instead of the one we made you",
+  "",
+  "<b>Seeing everything</b>",
+  `The full ledger — every job, every payment, and the AI's actual reasoning for`,
+  `every decision it has ever made — is public at ${WEB}`,
+  `Your own page: ${WEB}/get-hired`,
+  "",
+  "You keep 100% of what a job pays. The 1% network fee is paid by the client, not taken from you.",
+].join("\n");
+
+const PAGE_SIZE = 5;
+
+/**
+ * One compact message listing the board, not one message per job.
+ *
+ * The original sent a separate message per commission, capped at six. With a
+ * handful of jobs that's noisy; with thirty it's either a flood or it silently
+ * hides most of the work someone could be doing — the exact opposite of what a
+ * job board is for. Now: a single scannable list, a button per job, and paging.
+ */
+/** "in 4 minutes" / "now" — so an applicant knows when a decision is coming. */
+function closesIn(ts: number): string {
+  const ms = ts - Date.now();
+  if (ms <= 0) return "judging now";
+  const mins = Math.ceil(ms / 60_000);
+  if (mins < 60) return `judged in ~${mins} min`;
+  const hrs = Math.round(mins / 60);
+  return `judged in ~${hrs}h`;
+}
+
+function matchesFilter(q: { title: string; criteria: string[]; budget: number; category?: string | null }, filter: string): boolean {
+  if (!filter) return true;
+  const f = filter.toLowerCase().trim();
+
+  // "$5" / "5+" — a minimum budget rather than a word to match.
+  const min = f.match(/^\$?(\d+(?:\.\d+)?)\+?$/);
+  if (min?.[1]) return q.budget >= Number(min[1]);
+
+  // Category included so "/jobs design" narrows the board the same way the
+  // web filter does, rather than only matching jobs that say "design" in prose.
+  const haystack = `${q.title} ${q.criteria.join(" ")} ${q.category ?? ""}`.toLowerCase();
+  // Every word must appear, so "logo png" narrows rather than widens.
+  return f.split(/\s+/).every((word) => haystack.includes(word));
+}
+
+async function showJobs(chatId: number, tgUserId: number, filter = "", page = 0) {
+  const all = await workers.openQuests();
+  const quests = all.filter((q) => matchesFilter(q, filter));
+
+  if (all.length === 0) {
+    return send(chatId, "No open commissions this minute. I'll message you the moment one is posted.");
+  }
+  if (quests.length === 0) {
+    return send(
+      chatId,
+      [
+        `Nothing matches “${esc(filter)}”.`,
+        "",
+        `Looking for one job in particular? Use its number: <code>/job ${all[0]?.escrowId ?? 38}</code>`,
+        `Filtering: <code>/jobs design</code> · by word: <code>/jobs logo</code> · by budget: <code>/jobs 5</code>`,
+        `Or /jobs on its own to see all ${all.length}.`,
+      ].join("\n"),
+    );
+  }
+
+  const pages = Math.ceil(quests.length / PAGE_SIZE);
+  const p = Math.max(0, Math.min(page, pages - 1));
+  const slice = quests.slice(p * PAGE_SIZE, p * PAGE_SIZE + PAGE_SIZE);
+  const worker = workerFor(tgUserId);
+
+  const header = filter
+    ? `<b>${quests.length}</b> of ${all.length} commissions match “${esc(filter)}”`
+    : `<b>${all.length}</b> open commission${all.length !== 1 ? "s" : ""}, all funded up front`;
+
+  const body = slice.map((q) => {
+    const crit = q.criteria.slice(0, 4).map((c) => `      ✓ ${c}`).join("\n");
+    const milestones =
+      q.milestones && q.milestones.length > 1
+        ? "\n   <b>Paid in stages:</b>\n" + q.milestones.map((m, i) => `      ${i + 1}. $${m.amount} — ${m.description}`).join("\n")
+        : "";
+    return [
+      `━━━━━━━━━━━━━━━━━━━━`,
+      `<b>${q.title}</b>   <code>#${q.escrowId}</code>`,
+      `💰 <b>$${q.budget} USDC</b>  ·  ⏱ ${q.durationDays} day${q.durationDays !== 1 ? "s" : ""} to deliver`,
+      `🔒 already locked in escrow  ·  📥 ${closesIn(q.closesAt)}`,
+      // Only when it is known. A job posted before categories existed should
+      // say nothing rather than be labelled with a guess.
+      q.category ? `🏷 ${esc(q.category)}` : "",
+      "",
+      "   <b>What they need:</b>",
+      crit,
+      q.criteria.length > 4 ? `      … and ${q.criteria.length - 4} more — <code>/job ${q.escrowId}</code> for all of them` : "",
+      milestones,
+    ]
+      .filter(Boolean)
+      .join("\n");
+  });
+
+  // One button per job, two per row, so the list stays tappable as it grows.
+  const jobButtons: { text: string; callback_data: string }[][] = [];
+  for (let i = 0; i < slice.length; i += 2) {
+    jobButtons.push(
+      slice.slice(i, i + 2).map((q) => ({
+        text: worker ? `Apply · ${q.title.slice(0, 18)}` : `Join to apply`,
+        callback_data: worker ? `apply:${q.escrowId}` : "join",
+      })),
+    );
+  }
+
+  const nav: { text: string; callback_data: string }[] = [];
+  if (p > 0) nav.push({ text: "‹ Back", callback_data: `page:${p - 1}:${filter}` });
+  if (p < pages - 1) nav.push({ text: `More (${p + 1}/${pages}) ›`, callback_data: `page:${p + 1}:${filter}` });
+  if (nav.length) jobButtons.push(nav);
+
+  await send(
+    chatId,
+    [
+      header,
+      "",
+      body.join("\n\n"),
+      "",
+      pages > 1 ? `<i>Page ${p + 1} of ${pages}</i>` : "",
+      llmPaused()
+        ? `⏳ <i>The agent is rate-limited and resumes in ${llmPauseRemaining()}. You can still apply now — applications are on-chain and queue up.</i>`
+        : "",
+      `<i>Filter with</i> <code>/jobs logo</code> <i>or a minimum budget:</i> <code>/jobs 5</code>`,
+    ]
+      .filter(Boolean)
+      .join("\n"),
+    jobButtons,
+  );
+}
+
+/**
+ * One commission in full: the whole brief, the milestone split, every applicant
+ * ranked with the reasoning, and the outcome.
+ *
+ * Shared by /job <id> and /jobs <id>, because people reach for both and being
+ * pedantic about which is "correct" helps nobody.
+ */
+async function showJobDetail(chatId: number, id: string): Promise<void> {
+  const detail = workers.jobDetail(id);
+  if (!detail) {
+    await send(chatId, `No commission with id ${id}. /jobs to see what's open.`);
+    return;
+  }
+
+  const graded = detail.scores.length
+    ? detail.scores
+        .sort((a, b) => b.score - a.score)
+        .map((sc) => {
+          const flag = sc.injection ? " 🚫 injection attempt" : sc.hired ? " ← hired" : "";
+          return `   <b>${sc.score}/100</b> ${sc.address.slice(0, 8)}…${flag}\n      <i>${sc.reasoning.slice(0, 150)}</i>`;
+        })
+        .join("\n\n")
+    : "   Nobody has applied yet.";
+
+  await send(
+    chatId,
+    [
+      `<b>${detail.title}</b>  <code>#${id}</code>`,
+      `💰 $${detail.budget} USDC · ${detail.status}`,
+      "",
+      "<b>Everything they need:</b>",
+      ...detail.criteria.map((c, i) => `   ${i + 1}. ${c}`),
+      detail.milestones.length > 1
+        ? "\n<b>Paid in stages:</b>\n" + detail.milestones.map((m, i) => `   ${i + 1}. $${m.amount} — ${m.description}`).join("\n")
+        : "",
+      "",
+      `<b>${detail.scores.length} applicant${detail.scores.length !== 1 ? "s" : ""}, graded:</b>`,
+      graded,
+      "",
+      detail.outcome ? `<b>Outcome:</b> ${detail.outcome}` : "",
+      `Full reasoning, verbatim: ${WEB}/jobs`,
+    ]
+      .filter(Boolean)
+      .join("\n"),
+  );
+}
+
+async function handleText(msg: TgMessage) {
+  const chatId = msg.chat.id;
+  const tgUserId = msg.from?.id;
+  if (!tgUserId) return;
+  const text = (msg.text ?? "").trim();
+
+  // ── Replies to a question we asked, even when they look like commands ──
+  //
+  // /skip is offered by the portfolio prompt, so it MUST be handled before
+  // command dispatch. It wasn't: anything starting with "/" fell into the
+  // command block, matched nothing, and got answered with the help text — which
+  // silently threw away the cover letter the person had just written and never
+  // applied them to the job. They were told to type /skip and then punished for it.
+  const waiting = pending.get(chatId);
+  if (waiting && /^\/(skip|cancel|stop)$/i.test(text)) {
+    if (/^\/(cancel|stop)$/i.test(text)) {
+      pending.delete(chatId);
+      return void (await send(chatId, "No problem — nothing sent. /jobs whenever you're ready."));
+    }
+    // /skip only means "no link"; anywhere else it has nothing to skip.
+    if (waiting.kind !== "portfolio") {
+      return void (await send(chatId, "Nothing to skip here — /cancel if you'd rather stop."));
+    }
+  }
+
+  // ── Commands ──
+  if (text.startsWith("/") && !(waiting?.kind === "portfolio" && /^\/skip$/i.test(text))) {
+    const cmd = text.split(/\s+/)[0]?.toLowerCase();
+    const rest = text.slice(cmd?.length ?? 0).trim();
+
+    if (cmd === "/start") {
+      /**
+       * Deep-link payload. Telegram passes whatever followed ?start= in the
+       * link as the argument to /start, which is how a website hands context
+       * to a chat without asking anyone to type it.
+       *
+       * This is what turns "copy your own wallet address into a chat window"
+       * — a genuinely bad first instruction — into one tap from the job page.
+       */
+      const deepLink = rest.trim();
+      if (deepLink.startsWith("watch_")) {
+        const addr = deepLink.slice("watch_".length);
+        if (/^0x[a-fA-F0-9]{40}$/.test(addr)) {
+          store.watchClient(addr, "telegram", String(chatId));
+          return void (await send(
+            chatId,
+            [
+              `👁 <b>You'll get updates here.</b>`,
+              "",
+              `Following commissions paid for by <code>${addr.slice(0, 10)}…${addr.slice(-6)}</code>.`,
+              "",
+              "I'll message you when someone is hired, when the work is delivered, when it's accepted, and when the money moves — so you don't have to keep a tab open.",
+              "",
+              "/unwatch to stop.",
+            ].join("\n"),
+          ));
+        }
+      }
+
+      const existing = workerFor(tgUserId);
+      if (existing) {
+        await send(chatId, `Welcome back, ${esc(existing.handle)}. /jobs to see what's open.`);
+        return;
+      }
+      pending.set(chatId, { kind: "handle" });
+      await send(
+        chatId,
+        [
+          "🎨 <b>Atelier</b> — an AI posts a job, locks the money on-chain, and pays you when the work is accepted.",
+          "",
+          "No wallet to install. No crypto to learn. You'll be set up in about ten seconds.",
+          "",
+          "First — what should I call you?",
+        ].join("\n"),
+      );
+      return;
+    }
+
+    if (cmd === "/help") return void (await send(chatId, HELP));
+    if (cmd === "/jobs" || cmd === "/quests") {
+      // "/jobs 37" almost always means "show me job 37" — the listing prints the
+      // id as #37, so that is the number in front of someone. But /jobs <n> was
+      // defined as a MINIMUM BUDGET, so it searched for jobs paying $37+, found
+      // none, and told them nothing matched. Two commands one letter apart
+      // meaning entirely different things, with the more discoverable one doing
+      // the wrong thing.
+      //
+      // If the number IS an open job, show that job. Otherwise fall through to
+      // the budget filter, which is what someone typing "/jobs 5" wants.
+      const bare = rest.trim();
+      if (/^\d+$/.test(bare) && workers.jobDetail(bare)) return void (await showJobDetail(chatId, bare));
+      return void (await showJobs(chatId, tgUserId, rest));
+    }
+
+    if (cmd === "/submit") {
+      const worker = workerFor(tgUserId);
+      if (!worker) return void (await send(chatId, "You're not signed up yet — send /start."));
+      const id = rest.trim();
+      if (!id) {
+        return void (await send(chatId, "Which commission? Send <code>/submit 31</code> using the entry number from /jobs."));
+      }
+      pending.set(chatId, { kind: "deliverable", escrowId: id });
+      return void (await send(chatId, "Describe what you're delivering, and paste a link to the file."));
+    }
+
+    // ── /wallet — the question testers actually asked: where is my wallet,
+    //    and can I have the seed phrase? Answered precisely, because a vague
+    //    answer here reads as evasive about someone's money.
+    if (cmd === "/wallet") {
+      const worker = workerFor(tgUserId);
+      if (!worker) return void (await send(chatId, "You're not signed up yet — send /start."));
+      if (worker.mode === "own") {
+        return void (await send(
+          chatId,
+          [`You're using your own wallet:`, `<code>${worker.walletAddress}</code>`, "", "You hold the keys. Atelier only tells you when work appears."].join("\n"),
+        ));
+      }
+      return void (await send(
+        chatId,
+        [
+          "<b>Your wallet</b>",
+          `<code>${worker.walletAddress}</code>`,
+          `<a href="https://testnet.arcscan.app/address/${worker.walletAddress}">See it on the block explorer</a> — it's a real address on a public chain, and anything in it is yours.`,
+          "",
+          "<b>Is there a seed phrase?</b>",
+          "No — and that's the honest answer rather than a refusal.",
+          "",
+          "It's an MPC wallet (Circle). The key was never created as one piece: it exists as separate",
+          "shares held apart, and it is never assembled anywhere. So there is no seed phrase or private",
+          "key in existence to give you — not to you, not to us, not to Circle.",
+          "",
+          "<b>Then how do I get my money out?</b>",
+          "/withdraw — send it to any address you control, any time, no permission needed.",
+          "",
+          "The precise version: <i>your money is fully yours and fully extractable. The key is not",
+          "extractable by anyone.</i> Same model as Coinbase or Venmo — you've never seen their keys",
+          "either; you withdraw to an address you own.",
+          "",
+          "Want real self-custody instead? /link 0xYourAddress switches you over and sweeps what",
+          "you've earned across. Nobody is locked in.",
+        ].join("\n"),
+      ));
+    }
+
+    // Asked for by a tester wearing the client hat: "is there anywhere I can see
+    // how many applied and how they were graded?" There was — the public ledger —
+    // but nothing in the bot pointed at it, so effectively there wasn't.
+    if (cmd === "/job") {
+      const id = rest.trim();
+      if (!id) return void (await send(chatId, "Which one? <code>/job 38</code> — the number is on every job."));
+      return void (await showJobDetail(chatId, id));
+    }
+
+    if (cmd === "/profile") {
+      const worker = workerFor(tgUserId);
+      if (!worker) return void (await send(chatId, "You're not signed up yet — send /start."));
+      let rating = "no ratings yet";
+      try {
+        if (worker.walletAddress) {
+          const r = await atelier.getAverageRating(worker.walletAddress as `0x${string}`);
+          if (r.count > 0) rating = `${"★".repeat(Math.round(r.average))} ${r.average.toFixed(1)}/5 from ${r.count} job(s)`;
+        }
+      } catch {
+        /* chain hiccup — the rest of the profile is still worth showing */
+      }
+      const joined = new Date(worker.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "long" });
+      return void (await send(
+        chatId,
+        [
+          `<b>${esc(worker.handle)}</b>`,
+          `Joined ${joined} · ${worker.mode === "managed" ? "wallet managed for you" : "your own wallet"}`,
+          "",
+          `<b>What you do:</b> ${esc(worker.skills) || "not set — /skills to tell Atelier"}`,
+          `<b>On-chain rating:</b> ${rating}`,
+          "",
+          "Your rating is written to the contract when a job completes, so it's verifiable by anyone and not something we can quietly change.",
+        ].join("\n"),
+      ));
+    }
+
+    if (cmd === "/skills") {
+      const worker = workerFor(tgUserId);
+      if (!worker) return void (await send(chatId, "You're not signed up yet — send /start."));
+      if (!rest) return void (await send(chatId, "Tell me what you do, like: <code>/skills logo design, brand identity</code>"));
+      store.setWorkerSkills(worker.id, rest.slice(0, 200));
+      return void (await send(chatId, `Noted — <b>${esc(rest.slice(0, 200))}</b>. /profile to see it.`));
+    }
+
+    if (cmd === "/mine") {
+      const worker = workerFor(tgUserId);
+      if (!worker) return void (await send(chatId, "You're not signed up yet — send /start."));
+      const mine = await workers.myWork(worker.id);
+      if (mine.length === 0) {
+        return void (await send(chatId, "You haven't applied to anything yet. /jobs to see what's open."));
+      }
+      return void (await send(
+        chatId,
+        [
+          "<b>Your jobs</b>",
+          "",
+          // The /submit hint belongs HERE, on the surface where it is a real
+          // command — not baked into the shared status text, where it followed
+          // web users onto a page with no command line to type it into.
+          ...mine.map(
+            (m) =>
+              `${m.icon} <b>${esc(m.title)}</b> — $${m.budget}\n   ${m.status}` +
+              (m.state === "hired" ? ` — <code>/submit ${m.escrowId}</code>` : ""),
+          ),
+        ].join("\n"),
+      ));
+    }
+
+    if (cmd === "/balance") {
+      const worker = workerFor(tgUserId);
+      if (!worker) return void (await send(chatId, "You're not signed up yet — send /start."));
+      try {
+        const { balance, address } = await workers.balance(worker.id);
+        await send(
+          chatId,
+          [
+            `💰 <b>$${Number(balance).toFixed(2)} USDC</b>`,
+            "",
+            "This is already yours — it sits in your own wallet, not with Atelier.",
+            `<code>${address}</code>`,
+            "",
+            "/withdraw to move it to any address you control.",
+          ].join("\n"),
+        );
+      } catch (err) {
+        await send(chatId, `Couldn't read your balance: ${err instanceof Error ? err.message : err}`);
+      }
+      return;
+    }
+
+    if (cmd === "/withdraw") {
+      const worker = workerFor(tgUserId);
+      if (!worker) return void (await send(chatId, "You're not signed up yet — send /start."));
+      if (rest.startsWith("0x")) return void (await doWithdraw(chatId, worker.id, rest as `0x${string}`));
+      pending.set(chatId, { kind: "withdraw" });
+      await send(chatId, "Paste the wallet address you'd like your earnings sent to (it starts with 0x).");
+      return;
+    }
+
+    // ── The client's side. Everything else in this bot is for the person
+    //    DOING the work; this is for the person who paid for it.
+    if (cmd === "/watch") {
+      const addr = rest.trim();
+      if (!/^0x[a-fA-F0-9]{40}$/.test(addr)) {
+        return void (await send(
+          chatId,
+          [
+            "Send the wallet address you commission with:",
+            "<code>/watch 0xYourAddress</code>",
+            "",
+            "I'll message you when applicants arrive, when someone is hired, when the work lands, and when it's paid — so you don't have to keep a tab open.",
+          ].join("\n"),
+        ));
+      }
+      store.watchClient(addr, "telegram", String(chatId));
+      return void (await send(
+        chatId,
+        [
+          `👁 Following <code>${addr.slice(0, 10)}…${addr.slice(-6)}</code>.`,
+          "",
+          "You'll hear from me when:",
+          "· someone is hired for one of your commissions (and what they scored)",
+          "· nobody clears the bar (your money stays locked)",
+          "· the work is delivered — with the file",
+          "· it's accepted and paid",
+          "",
+          "/unwatch to stop. Everything I'll send you is already public on the ledger.",
+        ].join("\n"),
+      ));
+    }
+
+    if (cmd === "/unwatch") {
+      const n = store.unwatchClient("telegram", String(chatId));
+      return void (await send(chatId, n > 0 ? "Stopped following your commissions." : "You weren't following anything."));
+    }
+
+    if (cmd === "/link") {
+      const worker = workerFor(tgUserId);
+      if (!rest.startsWith("0x")) return void (await send(chatId, "Usage: /link 0xYourAddress"));
+      if (!worker) {
+        await workers.join({
+          handle: msg.from?.first_name ?? "Adventurer",
+          channel: "telegram",
+          channelRef: String(tgUserId),
+          ownAddress: rest as `0x${string}`,
+        });
+        return void (await send(chatId, "Linked. You sign for yourself — I'll just tell you when work appears."));
+      }
+      await workers.switchToOwnWallet(worker.id, rest as `0x${string}`);
+      return void (await send(chatId, "Done — future earnings go straight to your own wallet, and anything you'd already earned has been swept there."));
+    }
+
+    return void (await send(chatId, HELP));
+  }
+
+  // ── Freeform replies to whatever we last asked ──
+  const state = pending.get(chatId);
+  if (!state) return void (await send(chatId, HELP));
+
+  if (state.kind === "handle") {
+    pending.delete(chatId);
+    try {
+      const worker = await workers.join({
+        handle: text,
+        channel: "telegram",
+        channelRef: String(tgUserId),
+      });
+      // Testers joined and then didn't know what to do — it wasn't obvious that
+      // /jobs was the next step, or that it meant "see paid work". A command
+      // name is not an instruction. Say the thing, then give the button.
+      await send(
+        chatId,
+        [
+          `You're in, <b>${esc(worker.handle)}</b>. 🎨`,
+          "",
+          "I set up a wallet for you in the background. You don't have to do anything with it, nobody can take what's in it, and anything you earn lands there directly.",
+          "",
+          "<b>Here's how this works:</b>",
+          "1. An AI posts a job and locks the money up front",
+          "2. You apply and say why you're right for it",
+          "3. It reads every applicant together and picks one",
+          "4. You do the work, it checks it, you get paid in USDC",
+          "",
+          "👉 <b>Tap the button below to see what's paying right now.</b>",
+        ].join("\n"),
+        [[{ text: "💼 See available jobs", callback_data: "page:0:" }]],
+      );
+    } catch (err) {
+      await send(chatId, `Couldn't set you up: ${err instanceof Error ? err.message : err}`);
+    }
+    return;
+  }
+
+  const worker = workerFor(tgUserId);
+  if (!worker) {
+    pending.delete(chatId);
+    return void (await send(chatId, "You're not signed up yet — send /start."));
+  }
+
+  // Ask for evidence before applying. Testers pointed out that with only a text
+  // box every applicant sounds equally confident, and someone with real work to
+  // show had no way to show it.
+  if (state.kind === "cover") {
+    pending.set(chatId, { kind: "portfolio", escrowId: state.escrowId, coverLetter: text });
+    await send(
+      chatId,
+      [
+        "Got it. Now — got a link to past work? A portfolio, CV, GitHub, Behance, Drive folder, anything.",
+        "",
+        "It counts: applicants who show work they've actually shipped score higher than the same claim without one.",
+        "",
+        "Send the link, or /skip if you'd rather not.",
+      ].join("\n"),
+    );
+    return;
+  }
+
+  if (state.kind === "portfolio") {
+    const skipped = /^\/skip$/i.test(text);
+    pending.delete(chatId);
+    await send(chatId, "Applying…");
+    try {
+      const { txHash } = await workers.apply(worker.id, state.escrowId, state.coverLetter, undefined, skipped ? undefined : text);
+      await send(
+        chatId,
+        [
+          "✅ Applied.",
+          "",
+          // Never promise a reply we currently cannot produce. Applying is
+          // entirely on-chain and works regardless; it is the SCORING that needs
+          // the model, so when it's paused say so rather than going quiet.
+          llmPaused()
+            ? `Your application is on-chain and safe. The agent is rate-limited right now and resumes in ${llmPauseRemaining()} — I'll message you as soon as it has scored everyone.`
+            : "The job stays open for a while so others can apply, then the agent scores everyone together and hires the best fit. I'll message you either way — you don't have to keep checking.",
+          `<a href="https://testnet.arcscan.app/tx/${txHash}">See it on the block explorer</a>`,
+        ].join("\n"),
+      );
+    } catch (err) {
+      await send(chatId, `Couldn't apply: ${err instanceof Error ? err.message : err}`);
+    }
+    return;
+  }
+
+  if (state.kind === "deliverable") {
+    pending.delete(chatId);
+    await send(chatId, "Sending your work…");
+    try {
+      const { txHash } = await workers.submit(worker.id, state.escrowId, text);
+      await send(
+        chatId,
+        [
+          "📮 Sent.",
+          "",
+          "It gets reviewed against every acceptance criterion. If it passes, the escrow pays you immediately. If not, you'll get specific written feedback and another go.",
+          `<a href="https://testnet.arcscan.app/tx/${txHash}">See it on the block explorer</a>`,
+        ].join("\n"),
+      );
+    } catch (err) {
+      await send(chatId, explainChainError(err, "Couldn't send that"));
+    }
+    return;
+  }
+
+  if (state.kind === "withdraw") {
+    pending.delete(chatId);
+    if (!text.startsWith("0x")) return void (await send(chatId, "That doesn't look like an address — it should start with 0x."));
+
+    /**
+     * Ask how much. It used to send everything.
+     *
+     * /withdraw took an address and emptied the wallet, and nobody was ever
+     * asked. Someone withdrawing part of their earnings had no way to say so —
+     * the only available answer was "all of it" — and the balance afterwards
+     * read $0.02, which looks like a bug rather than the gas float it is.
+     */
+    let available = 0;
+    try {
+      available = Number((await workers.balance(worker.id)).balance);
+    } catch {
+      /* if the balance can't be read, still let them name an amount */
+    }
+    pending.set(chatId, { kind: "withdraw-amount", destination: text as `0x${string}`, available });
+    await send(
+      chatId,
+      [
+        available > 0 ? `You have <b>$${available.toFixed(2)} USDC</b>.` : "",
+        "How much would you like to send? Reply with an amount, or <b>all</b> for everything.",
+        "",
+        "<i>A little is always kept back for gas, so \"all\" leaves a few cents behind.</i>",
+      ]
+        .filter(Boolean)
+        .join("\n"),
+    );
+    return;
+  }
+
+  if (state.kind === "withdraw-amount") {
+    pending.delete(chatId);
+    const wantsAll = /^(all|max|everything)$/i.test(text.trim());
+    if (wantsAll) return void (await doWithdraw(chatId, worker.id, state.destination));
+
+    const amount = Number(text.replace(/[$,\s]/g, ""));
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return void (await send(chatId, "That's not an amount I can read. Send /withdraw again and reply with a number, or \"all\"."));
+    }
+    if (state.available > 0 && amount > state.available) {
+      return void (await send(
+        chatId,
+        `That's more than you have — your balance is $${state.available.toFixed(2)}. Nothing was sent. Send /withdraw to try again.`,
+      ));
+    }
+    await doWithdraw(chatId, worker.id, state.destination, amount.toFixed(6));
+  }
+}
+
+/**
+ * A chain revert is not a message to a person.
+ *
+ * A freelancer submitting to a job they were not hired for received the raw
+ * viem error: 400 bytes of calldata, an ESTIMATION_ERROR, a gas trace and a
+ * link to the viem docs. It told them nothing they could act on and looked
+ * like the product had broken.
+ *
+ * Atelier's custom errors are the useful part, so they are translated. The
+ * hex selectors are matched directly because the revert reaches us as a raw
+ * `execution reverted: 0x…` string rather than a decoded error.
+ */
+const CHAIN_ERRORS: [RegExp, string][] = [
+  [/0x82b42900|Unauthorized/i, "you're not the freelancer hired for that commission, so the escrow won't accept a delivery from you. /mine shows the jobs that are actually yours."],
+  [/0x9fbfc589|AlreadySubmitted/i, "that milestone has already been delivered and is waiting on review."],
+  [/0xf525e320|InvalidStatus/i, "that commission isn't in a state that accepts a delivery right now."],
+  [/insufficient funds|gas required/i, "there wasn't enough gas on your wallet to send it. Try again in a moment — I top it up automatically."],
+  [/timeout|timed out|ETIMEDOUT/i, "the network didn't answer in time. Nothing was sent, so it's safe to try again."],
+];
+
+function explainChainError(err: unknown, prefix: string): string {
+  const raw = err instanceof Error ? err.message : String(err);
+  for (const [pattern, human] of CHAIN_ERRORS) {
+    if (pattern.test(raw)) return `${prefix} — ${human}`;
+  }
+  // Nothing recognised: say so plainly rather than pasting a stack trace.
+  return `${prefix}. Nothing was lost. Try again, or /help if it keeps happening.`;
+}
+
+async function doWithdraw(chatId: number, workerId: string, destination: `0x${string}`, amountUsdc?: string) {
+  try {
+    const { txHash, amount } = await workers.withdraw(workerId, destination, amountUsdc);
+    await send(
+      chatId,
+      [
+        `✅ Sent $${Number(amount).toFixed(2)} USDC to your wallet.`,
+        `<a href="https://testnet.arcscan.app/tx/${txHash}">See it on the block explorer</a>`,
+      ].join("\n"),
+    );
+  } catch (err) {
+    await send(chatId, `Couldn't withdraw: ${err instanceof Error ? err.message : err}`);
+  }
+}
+
+async function handleCallback(cq: NonNullable<TgUpdate["callback_query"]>) {
+  const chatId = cq.message?.chat.id;
+  const tgUserId = cq.from.id;
+  if (!chatId) return;
+  await call("answerCallbackQuery", { callback_query_id: cq.id });
+
+  const [action, arg] = (cq.data ?? "").split(":");
+
+  if (action === "page") {
+    const [, pageStr, ...filterParts] = (cq.data ?? "").split(":");
+    return void (await showJobs(chatId, tgUserId, filterParts.join(":"), Number(pageStr) || 0));
+  }
+
+  if (action === "join") {
+    pending.set(chatId, { kind: "handle" });
+    return void (await send(chatId, "What should I call you?"));
+  }
+
+  const worker = workerFor(tgUserId);
+  if (!worker) return void (await send(chatId, "You're not signed up yet — send /start."));
+
+  if (action === "apply" && arg) {
+    pending.set(chatId, { kind: "cover", escrowId: arg });
+    return void (await send(
+      chatId,
+      "Tell me why you're right for this one — be specific about what you'd deliver. The agent reads this and scores it.",
+    ));
+  }
+
+  if (action === "submit" && arg) {
+    pending.set(chatId, { kind: "deliverable", escrowId: arg });
+    return void (await send(chatId, "Describe what you're delivering, and paste a link to the file."));
+  }
+}
+
+/** Tell every Telegram worker that new paid work exists. This is the notification the web page can't match. */
+export async function broadcastNewQuest(title: string, budget: number, escrowId: string): Promise<void> {
+  if (!config.telegramBotToken) return;
+  const recipients = store.listWorkers(200).filter((w) => w.channel === "telegram" && w.channelRef);
+  for (const w of recipients) {
+    await send(
+      Number(w.channelRef),
+      [`🔔 <b>New quest:</b> ${esc(title)}`, `💰 $${budget} USDC — already locked in escrow.`].join("\n"),
+      [[{ text: "Apply", callback_data: `apply:${escrowId}` }]],
+    );
+  }
+}
+
+/** DM a worker something that happened to them specifically (hired, approved, paid). */
+export async function notifyWorkerByAddress(address: string, text: string): Promise<void> {
+  if (!config.telegramBotToken) return;
+  const worker = store.getWorkerByAddress(address);
+  if (worker?.channel === "telegram" && worker.channelRef) await send(Number(worker.channelRef), text);
+}
+
+/**
+ * Notify whoever was hired for a given escrow.
+ *
+ * Review and payment events carry the escrow, not the person — so the hire is
+ * looked up from the decision log, which is the one place that records who was
+ * accepted for which job. No new bookkeeping: it's already written there for
+ * the command center.
+ */
+export async function notifyWorkerForEscrow(escrowId: string, text: string): Promise<void> {
+  if (!config.telegramBotToken) return;
+  const hire = store
+    .listDecisions(300)
+    .find((d: { task_id?: string; type?: string; target?: string }) => d.task_id === escrowId && d.type === "applicant_accepted" && d.target);
+  if (hire?.target) await notifyWorkerByAddress(hire.target, text);
+}
+
+/**
+ * Long-poll forever. Never throws out of the loop — a bot that dies on one bad
+ * update takes the daemon's whole worker channel with it.
+ */
+export function startTelegramBot(): void {
+  if (!config.telegramBotToken) {
+    console.log("[telegram] TELEGRAM_BOT_TOKEN not set — bot is dormant (everything else runs normally)");
+    return;
+  }
+
+  let offset = 0;
+  /** Consecutive transport failures, for backoff and for saying it once. */
+  let outage = 0;
+  const loop = async () => {
+    for (;;) {
+      const updates = await call<TgUpdate[]>(
+        "getUpdates",
+        { offset, timeout: 25, allowed_updates: ["message", "callback_query"] },
+        true,
+      );
+      if (updates !== null && outage > 0) {
+        console.log(`[telegram] reconnected after ${outage} failed poll(s)`);
+        outage = 0;
+      }
+      if (updates?.length) {
+        for (const u of updates) {
+          offset = Math.max(offset, u.update_id + 1);
+          try {
+            if (u.message?.text) await handleText(u.message);
+            else if (u.callback_query) await handleCallback(u.callback_query);
+          } catch (err) {
+            console.error("[telegram] update failed:", err instanceof Error ? err.message : err);
+            // Say SOMETHING. This used to log and move on, so a command that
+            // threw — /link with a malformed address, /mine when the chain was
+            // unreachable — produced total silence: from the outside the bot
+            // had simply ignored you, which reads as broken rather than failed.
+            // The pending-reply handlers each caught their own errors; the
+            // command path had no such net.
+            const chatId = u.message?.chat.id ?? u.callback_query?.message?.chat.id;
+            if (chatId) {
+              const text =
+                err instanceof workers.UserFacingError
+                  ? err.message
+                  : "Something went wrong on my side — nothing was lost or sent. Try that again, or /help for what I can do.";
+              await send(chatId, text).catch(() => {});
+            }
+          }
+        }
+      } else if (updates === null) {
+        // Transport failure. Say it once, then go quiet until it recovers, and
+        // back off geometrically rather than retrying every five seconds
+        // forever -- a sustained outage used to produce twelve log lines a
+        // minute and twelve pointless requests with it.
+        outage++;
+        if (outage === 1) console.warn("[telegram] polling interrupted — retrying quietly until it recovers");
+        const wait = Math.min(5_000 * 2 ** (outage - 1), 60_000);
+        await new Promise((r) => setTimeout(r, wait));
+      }
+    }
+  };
+
+  void loop();
+  console.log("[telegram] bot listening (long-poll)");
+}
+
+/**
+ * Tell the CLIENT what is happening to the job they paid for.
+ *
+ * The freelancer side of this has existed from the start — hired, revision
+ * requested, paid. The client side did not, so the person who put the money in
+ * had to keep a browser tab open to learn anything. Same infrastructure, other
+ * end of the deal.
+ *
+ * Resolves escrow → client address → whoever is following that address.
+ */
+export async function notifyClientForEscrow(escrowId: string, text: string): Promise<void> {
+  if (!config.telegramBotToken) return;
+  const task = store.listTasks(300).find((t) => t.escrowId === escrowId);
+  const address = task?.clientAddress;
+  if (!address) return; // posted before signed commissioning, or by an agent over x402
+
+  for (const w of store.watchersFor(address)) {
+    if (w.channel === "telegram") await send(Number(w.channelRef), text);
+  }
+}

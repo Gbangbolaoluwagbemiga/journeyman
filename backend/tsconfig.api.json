@@ -1,0 +1,6 @@
+{
+  "//": "The serverless entry lives outside src/, which the main tsconfig scopes to via rootDir. Vercel compiles api/ with its own toolchain, so it never has to enter dist -- but it still has to be typechecked, or a broken re-export only shows up as a failed deploy.",
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "noEmit": true, "rootDir": "." },
+  "include": ["src/**/*", "api/**/*"]
+}

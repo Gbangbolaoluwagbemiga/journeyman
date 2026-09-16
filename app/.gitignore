@@ -1,0 +1,105 @@
+# build output
+dist/
+dist-ssr/
+build/
+*.tsbuildinfo
+
+# dependencies
+node_modules/
+.pnp
+.pnp.js
+PITCH_DECK_PROMPT.md
+
+# logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# environment variables (never commit secrets)
+.env
+.env.*
+!.env.example
+backend/.env
+
+# easy way to create temporary local-only files
+*.local.*
+*.local
+
+# local planning docs (never commit)
+.plans/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+*~
+.directory
+.Trash-*
+
+# IDE and editor
+.vscode/
+.idea/
+*.swp
+*.swo
+.project
+.classpath
+.settings/
+*.sublime-project
+*.sublime-workspace
+
+# Vite
+.vite/
+vite.config.*.timestamp-*
+
+# TypeScript
+*.tsbuildinfo
+
+# Coverage / testing
+coverage/
+.nyc_output/
+*.lcov
+.jest/
+
+# Misc
+.cache/
+.temp/
+.tmp/
+*.tmp
+*.bak
+*.backup
+
+# Foundry
+out/
+cache/
+broadcast/
+foundry.lock
+
+# contract deployment artifacts
+.contract-id
+.contract-address
+
+# Subgraph build output
+subgraph/build/
+subgraph/generated/
+
+# Rust / cargo (not used at runtime)
+.cargo/
+
+# IDE
+.config/
+
+# Fork-profile build output (foundry.toml [profile.fork])
+out-fork/

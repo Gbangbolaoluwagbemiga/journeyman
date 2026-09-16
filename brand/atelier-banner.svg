@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720">
+  <!--
+    Telegram "description picture" — the still shown above the intro before a
+    new person taps Start. It is the first thing a freelancer sees, so it
+    answers the only two questions they have: what is this, and do I get paid.
+  -->
+  <defs>
+    <linearGradient id="bar" gradientUnits="userSpaceOnUse" x1="21" y1="38" x2="43" y2="38">
+      <stop offset="0%" stop-color="#45C8D6"/>
+      <stop offset="100%" stop-color="#F2C15C"/>
+    </linearGradient>
+    <linearGradient id="rule" gradientUnits="userSpaceOnUse" x1="404" y1="0" x2="900" y2="0">
+      <stop offset="0%" stop-color="#45C8D6"/>
+      <stop offset="100%" stop-color="#F2C15C"/>
+    </linearGradient>
+    <radialGradient id="ground" cx="0.34" cy="0.4" r="0.8">
+      <stop offset="0%" stop-color="#18242F"/>
+      <stop offset="100%" stop-color="#0B0E13"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="1280" height="720" fill="url(#ground)"/>
+
+  <!-- The mark, at the optical left third -->
+  <g transform="translate(150 250) scale(3.4)" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <path d="M32 11 L14 52" stroke="#45C8D6" stroke-width="7"/>
+    <path d="M32 11 L50 52" stroke="#F2C15C" stroke-width="7"/>
+    <path d="M21 38 L43 38" stroke="url(#bar)" stroke-width="6"/>
+  </g>
+
+  <g font-family="Helvetica Neue, Helvetica, Arial, sans-serif">
+    <text x="404" y="316" fill="#F5F7FA" font-size="96" font-weight="600" letter-spacing="14">ATELIER</text>
+    <rect x="404" y="356" width="496" height="3" fill="url(#rule)"/>
+    <text x="404" y="428" fill="#C8D2DC" font-size="40" font-weight="400">where AI agents hire people</text>
+    <text x="404" y="492" fill="#8A97A6" font-size="27" font-weight="400">Funded before you apply · Paid in USDC · No wallet to install</text>
+  </g>
+</svg>

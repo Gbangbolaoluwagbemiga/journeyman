@@ -1,0 +1,2953 @@
+// index.ts — Atelier's daemon entrypoint. Raw node:http (not a framework) so the
+// x402 seller middleware — which expects Express-style (req, res, next) — mounts
+// with zero adapter code, matching the proven pattern from the reference x402
+// seller implementation this was built against. Serves:
+//
+//   POST /api/hire            x402-gated — AI agents commission Atelier here
+//   POST /api/instruct        unguarded — the human front door (same pipeline)
+//   GET  /api/tasks           REST for the command-center UI
+//   GET  /api/decisions       decision log
+//   GET  /api/payments        payment feed
+//   GET  /events              SSE stream of live AgentEvents
+
+import http from "node:http";
+import { randomUUID } from "node:crypto";
+import { createPublicClient, http as viemHttp, formatEther, verifyMessage } from "viem";
+import { config, arcTestnet, rpcUrl } from "./config.js";
+import { AgentClient, type AgentEvent } from "./agent/AgentClient.js";
+import { notifyWeb } from "./notify/web.js";
+import { createAtelierGateway } from "./circle/gateway.js";
+import { listWhitelistedTokens } from "./web3/tokens.js";
+import { adoptDelegatedJobs } from "./agent/adoptDelegated.js";
+import { onWorkerEvent } from "./events.js";
+import { askAtelier, QuestionRejected } from "./assistant/ask.js";
+import { AssistantUnavailable } from "./groq/chat.js";
+import * as handover from "./agent/handover.js";
+import { createAtelierPaywall, ORDER_FEE_USDC } from "./circle/x402-seller.js";
+import * as atelier from "./web3/atelier.js";
+import { graphQuery, isGraphConfigured } from "./graph/client.js";
+import { GET_JOB_APPLICATIONS, GET_JOB_BY_ID, type GQLEscrow } from "./graph/queries.js";
+import * as store from "./store.js";
+import * as workers from "./workers/service.js";
+import * as telegram from "./workers/telegram.js";
+import { isLlmRateLimit, setLlmPausedUntil } from "./llm-status.js";
+import { extractStatedBudget, generateBrief } from "./agent/BriefGenerator.js";
+import { verifyGoogleIdToken } from "./workers/google-auth.js";
+
+const PORT = config.port;
+
+/**
+ * Held back from every withdrawal so Atelier can still sign.
+ *
+ * A treasury drained to exactly zero cannot pay the gas to do anything at all —
+ * including paying the next freelancer whose work was already approved.
+ */
+const TREASURY_GAS_FLOOR = Number(process.env.TREASURY_GAS_FLOOR_USDC ?? 0.5);
+
+/**
+ * The exact sentence a depositor signs to authorise a withdrawal.
+ *
+ * It names the address AND the amount, so a signature captured for one
+ * withdrawal cannot be replayed to authorise a bigger one.
+ */
+function withdrawalMessage(address: string, amountUsdc: string): string {
+  return `Atelier treasury withdrawal\nAddress: ${address.toLowerCase()}\nAmount: ${amountUsdc} USDC`;
+}
+
+/** The sentence a client signs to cancel their own unfilled commission. */
+function cancelMessage(address: string, escrowId: string): string {
+  return `Atelier cancel commission\nAddress: ${address.toLowerCase()}\nEscrow: ${escrowId}`;
+}
+
+/** The sentence a depositor signs to spend their own deposit on a commission. */
+function commissionMessage(address: string, amountUsdc: string): string {
+  return `Atelier commission\nAddress: ${address.toLowerCase()}\nBudget: ${amountUsdc} USDC`;
+}
+
+/**
+ * A ceiling on the public assistant, per caller, per minute.
+ *
+ * In memory and deliberately simple. This exists to stop one person or one
+ * script running up a model bill in a loop; it is not a defence against a
+ * distributed flood, and pretending otherwise would be the wrong amount of
+ * machinery for a question box.
+ */
+const ASK_PER_MINUTE = 12;
+const askSeen = new Map<string, { count: number; windowStart: number }>();
+
+function askAllowance(who: string): boolean {
+  const now = Date.now();
+  const entry = askSeen.get(who);
+
+  if (!entry || now - entry.windowStart > 60_000) {
+    askSeen.set(who, { count: 1, windowStart: now });
+    /* Swept here rather than on a timer — the map only grows when somebody is
+       asking, so the moment somebody asks is the right moment to tidy. */
+    if (askSeen.size > 500) {
+      for (const [k, v] of askSeen) if (now - v.windowStart > 60_000) askSeen.delete(k);
+    }
+    return true;
+  }
+
+  if (entry.count >= ASK_PER_MINUTE) return false;
+  entry.count++;
+  return true;
+}
+
+// ── SSE broadcast ──────────────────────────────────────────────────────────
+const sseClients = new Set<http.ServerResponse>();
+function broadcast(event: AgentEvent) {
+  const payload = `data: ${JSON.stringify(event)}\n\n`;
+  for (const res of sseClients) res.write(payload);
+}
+
+// Atelier's Gateway-backed treasury (MPC). Lazily created so the daemon still boots
+// (and /api/tasks etc. still work) if Circle env vars aren't set yet — only x402
+// routes need it.
+let gatewayInstance: ReturnType<typeof createAtelierGateway> | null = null;
+function getGateway() {
+  if (!gatewayInstance) gatewayInstance = createAtelierGateway();
+  return gatewayInstance;
+}
+
+/*
+ * Things PEOPLE do, routed the same way as things the agent does.
+ *
+ * Everything below hangs off AgentClient's callback, which only fires for the
+ * agent's own actions — so a freelancer delivering their work reached none of
+ * it. The worker layer publishes onto its own bus; this hands those events to
+ * exactly the same announcers, so a delivery gets the bell, the Telegram
+ * message and the live update that a hire already got.
+ */
+onWorkerEvent((event) => {
+  broadcast(event);
+  void notifyWeb(event);
+  if (event.escrowId) {
+    void telegram.notifyClientForEscrow(
+      event.escrowId,
+      [
+        "📦 <b>Your work has been delivered.</b>",
+        "",
+        "It's waiting on review.",
+        `${config.publicAppUrl}/jobs/${event.escrowId}`,
+      ].join("\n"),
+    );
+  }
+});
+
+const agent = new AgentClient((event) => {
+  broadcast(event);
+
+  /*
+   * The same news, to the same people, in the web app.
+   *
+   * Everything below reaches a human on Telegram. Someone using the web app was
+   * told nothing at all when the agent acted, because notifications are written
+   * from the acting party's browser and the agent has no browser. That made
+   * Autopilot the one mode where you had to watch the job.
+   *
+   * Fire-and-forget on purpose: the hire has already happened on-chain, and an
+   * undelivered courtesy must never stall the loop that pays people.
+   */
+  void notifyWeb(event);
+
+  // Reach the human this actually happened to. The web page can show all of
+  // this, but only if someone is looking at it — a freelancer waiting to hear
+  // whether they got the job is not sitting on a dashboard. Every call is a
+  // no-op when no bot token is configured.
+  if (event.decision?.target) {
+    const who = event.decision.target;
+    if (event.type === "applicant_accepted") {
+      void telegram.notifyWorkerByAddress(
+        who,
+        [
+          "🎉 <b>You got the job.</b>",
+          "",
+          "The money is already locked in escrow and can't be taken back — not even by the AI that hired you.",
+          "",
+          `Send your work with <code>/submit ${event.escrowId}</code> when it's ready. Include a link to the file.`,
+        ].join("\n"),
+      );
+      // And tell everyone else. They applied, waited, and were never told
+      // anything — the job simply went quiet on them forever. An answer you
+      // don't want is still better than silence, and someone who knows they
+      // weren't picked can go and apply for the next one.
+      if (event.escrowId) void notifyUnsuccessfulApplicants(event.escrowId, who);
+    }
+  }
+  // Nobody cleared the bar. Everyone who applied is owed the same answer they'd
+  // get if someone HAD been hired — this branch was silent, so an applicant who
+  // scored 55 was simply never spoken to again. Silence is the one outcome that
+  // teaches them nothing and reads as the job having vanished.
+  if (event.type === "no_suitable_applicant" && event.escrowId) {
+    void notifyUnsuccessfulApplicants(event.escrowId, null);
+  }
+  // ── The client's side of every one of these ────────────────────────────
+  // Each of these already messaged the freelancer. The person who PAID had to
+  // keep a tab open to learn the same facts about their own money.
+  if (event.escrowId) {
+    const id = event.escrowId;
+    const jobLink = `${config.publicAppUrl}/jobs/${id}`;
+
+    if (event.type === "applicant_accepted" && event.decision?.target) {
+      const who = event.decision.target;
+      void telegram.notifyClientForEscrow(
+        id,
+        [
+          "✅ <b>Someone's been hired for your commission.</b>",
+          "",
+          `<code>${who.slice(0, 10)}…${who.slice(-6)}</code> scored highest against your brief.`,
+          event.decision.reasoning ? `\n<i>${telegram.esc(event.decision.reasoning.slice(0, 400))}</i>\n` : "",
+          `Every applicant's score and the reasoning: ${jobLink}`,
+        ]
+          .filter(Boolean)
+          .join("\n"),
+      );
+    }
+
+    if (event.type === "no_suitable_applicant") {
+      void telegram.notifyClientForEscrow(
+        id,
+        [
+          "⏳ <b>Nobody cleared the bar on your commission yet.</b>",
+          "",
+          telegram.esc(event.decision?.reasoning ?? ""),
+          "",
+          "Your money is still locked in escrow — nobody is paid for work that wasn't good enough, and it comes back to you in full if the deadline passes with no one suitable.",
+          jobLink,
+        ]
+          .filter(Boolean)
+          .join("\n"),
+      );
+    }
+
+    if (event.type === "work_submitted") {
+      void telegram.notifyClientForEscrow(
+        id,
+        ["📦 <b>Your work has been delivered.</b>", "", "It's being checked against every acceptance criterion now.", jobLink].join("\n"),
+      );
+    }
+
+    /**
+     * BOTH names, because the decision and the event disagree.
+     *
+     * AgentClient stores the decision as `work_rejected` and broadcasts the
+     * event as `revision_requested`. This listener only ever checked the
+     * decision's name, so the one event it never matched was a rejection —
+     * and a rejection is the single moment a freelancer most needs to hear
+     * from us. Approvals emit `work_approved` and escalations emit
+     * `escalated_to_human`, which both match, which is exactly why those two
+     * notified and this one silently did not.
+     *
+     * Three testers went through three rejection rounds each and learned
+     * nothing until the job was escalated. The client learned nothing either.
+     */
+    if (event.type === "work_rejected" || event.type === "revision_requested") {
+      void telegram.notifyClientForEscrow(
+        id,
+        [
+          "📝 <b>The delivery didn't pass — a revision was requested.</b>",
+          "",
+          // 400 characters cut the criteria breakdown off mid-list, which is
+          // the part that says WHAT failed. The client is paying for this; they
+          // get to see which of their own acceptance criteria went unmet.
+          telegram.esc(event.decision?.reasoning?.slice(0, 1600) ?? ""),
+          "",
+          "Your money stays locked either way. The freelancer gets written feedback and another go.",
+          jobLink,
+        ]
+          .filter(Boolean)
+          .join("\n"),
+      );
+    }
+
+    if (event.type === "work_approved") {
+      void telegram.notifyClientForEscrow(
+        id,
+        [
+          "🎉 <b>Your work was accepted.</b>",
+          "",
+          "It met every criterion in your brief. Collect the file here:",
+          jobLink,
+        ].join("\n"),
+      );
+    }
+
+    if (event.type === "payment_released" && event.amountUsdc) {
+      void telegram.notifyClientForEscrow(
+        id,
+        `💸 <b>$${event.amountUsdc} released</b> from your escrow to the freelancer. The job is settled.\n\n${jobLink}`,
+      );
+    }
+
+    if (event.type === "escalated_to_human") {
+      void telegram.notifyClientForEscrow(
+        id,
+        `⚖️ <b>Your commission has gone to a human arbiter.</b>\n\nThe agent couldn't settle it after the revision rounds, so a person decides now. Your money is untouched.\n\n${jobLink}`,
+      );
+    }
+  }
+
+  if (event.type === "work_approved" && event.escrowId) {
+    void telegram.notifyWorkerForEscrow(event.escrowId, "✅ Your work was accepted. Payment is on its way to your wallet.");
+  }
+  if ((event.type === "work_rejected" || event.type === "revision_requested") && event.escrowId) {
+    void telegram.notifyWorkerForEscrow(
+      event.escrowId,
+      `📝 Revision requested:\n\n${telegram.esc(event.decision?.reasoning ?? "See the ledger for details.")}\n\nSend an updated version when you're ready — the money stays locked in escrow either way.`,
+    );
+  }
+  if (event.type === "payment_released" && event.escrowId) {
+    void telegram.notifyWorkerForEscrow(event.escrowId, `💰 Paid${event.amountUsdc ? ` — $${event.amountUsdc} USDC` : ""}. It's in your wallet now. /balance to see it.`);
+  }
+  /**
+   * Tell freelancers a job exists.
+   *
+   * This used to look the job up in the database by escrow id — and always
+   * found nothing, because the task row is only given its escrow id AFTER
+   * processInstruction returns, and this fires from inside it. Every "new
+   * quest" broadcast since the bot shipped was silently skipped.
+   *
+   * The event now carries the title, so there is nothing to look up and no
+   * ordering to get wrong.
+   */
+  if (event.type === "job_posted" && event.escrowId && event.amountUsdc && event.title) {
+    void telegram.broadcastNewQuest(event.title, Number(event.amountUsdc), event.escrowId);
+  }
+  if (event.decision) {
+    store.recordDecision({
+      id: event.decision.id,
+      taskId: event.decision.taskId,
+      type: event.decision.type,
+      reasoning: event.decision.reasoning,
+      target: event.decision.target,
+      score: event.decision.score,
+      timestamp: event.decision.timestamp,
+    });
+  }
+  // Only actual movements of money belong in the payment feed. This used to end
+  // in a catch-all `: "escrow_lock"`, which meant every on-chain write carrying
+  // a txHash — accepting an applicant, requesting a revision, escalating a
+  // dispute — was filed as a payment. Escrow #28 alone showed five phantom
+  // "Locked in Escrow" rows with no amount against a $1 job. Those are real
+  // transactions, but they are not payments, and padding the ledger with them
+  // is exactly the kind of thing that makes a real feed look fabricated.
+  const PAYMENT_DIRECTIONS = {
+    job_posted: "escrow_lock",
+    payment_released: "escrow_release",
+    portfolio_verified: "out",
+  } as const;
+  const direction = PAYMENT_DIRECTIONS[event.type as keyof typeof PAYMENT_DIRECTIONS];
+  if (event.txHash && event.escrowId && direction) {
+    store.recordPayment({
+      id: randomUUID(),
+      direction,
+      escrowId: event.escrowId,
+      amountUsdc: event.amountUsdc ?? "",
+      counterparty: event.counterparty,
+      txHash: event.txHash,
+      reason: event.type,
+    });
+  }
+}, getGateway);
+
+
+/**
+ * Tell the applicants who weren't chosen.
+ *
+ * Only the winner was ever notified, so everyone else was left waiting on a
+ * decision that had already been made. Their scores and the reasoning were
+ * public on the ledger the whole time; nobody thought to point them at it.
+ *
+ * Deliberately includes WHY and where to read it. A rejection that explains
+ * itself and links to the actual reasoning is a reason to apply again; a silent
+ * one is a reason to leave.
+ */
+async function notifyUnsuccessfulApplicants(escrowId: string, winner: string | null): Promise<void> {
+  try {
+    const result = await graphQuery<{ escrow: { applications: { freelancer: string }[] } | null }>(GET_JOB_APPLICATIONS, {
+      escrowId,
+    });
+    const applicants = result.escrow?.applications ?? [];
+    const scores = store
+      .listDecisions(300)
+      .filter((d: { task_id?: string; type?: string }) => d.task_id === escrowId && d.type === "application_scored");
+
+    for (const a of applicants) {
+      if (winner && a.freelancer.toLowerCase() === winner.toLowerCase()) continue;
+      const mine = scores.find((s: { target?: string }) => s.target?.toLowerCase() === a.freelancer.toLowerCase()) as
+        | { score?: number; reasoning?: string }
+        | undefined;
+      await telegram.notifyWorkerByAddress(
+        a.freelancer,
+        [
+          winner ? "This one went to someone else." : "Nobody cleared the bar on this one — including you.",
+          "",
+          mine?.score != null ? `You scored <b>${mine.score}/100</b> — the bar to be hired is ${config.hireScoreThreshold}.` : "",
+          mine?.reasoning ? `\n<i>${telegram.esc(mine.reasoning)}</i>\n` : "",
+          // Where the score actually went is the most useful thing we can hand
+          // back: it turns a rejection into instructions.
+          winner
+            ? ""
+            : "The commission is still open and the money is still locked — new applicants are scored as they arrive.",
+          "Every score and the reasoning behind it is public, so you can see exactly how the decision was made:",
+          `${config.publicAppUrl}/jobs/${escrowId}`,
+          "",
+          "/jobs to see what else is open — being turned down here counts against nothing.",
+        ]
+          .filter(Boolean)
+          .join("\n"),
+      );
+    }
+  } catch (err) {
+    console.warn("[notify] could not reach unsuccessful applicants:", err instanceof Error ? err.message : err);
+  }
+}
+
+/**
+ * What a caller is allowed to see when something upstream breaks. The full
+ * error still goes to the server log — but `/api/instruct` is a public endpoint,
+ * and echoing the raw failure put a verbatim Groq 401 payload (provider name,
+ * error taxonomy, response shape) straight into an HTTP response body. Known
+ * failure modes get a sentence a human can act on; anything else is generic.
+ */
+function clientError(err: unknown): string {
+  const raw = err instanceof Error ? err.message : String(err);
+  console.error("[api]", raw);
+
+  // Already written for the person who caused it — sanitising it would replace
+  // the most useful sentence we have with a generic one.
+  if (err instanceof workers.UserFacingError) return raw;
+
+  if (/insufficient|exceeds balance/i.test(raw)) {
+    return "Atelier's treasury doesn't hold enough USDC to fund this commission. Fund the treasury or lower the budget.";
+  }
+  if (/exceeds the maximum single-commission cap/i.test(raw)) return raw; // ours, already phrased for a human
+  if (/budget must be positive/i.test(raw)) return raw;
+  if (/401|invalid api key|unauthorized/i.test(raw)) {
+    return "The agent's language model rejected the request (credentials). This is a server-side configuration problem, not a problem with your instruction.";
+  }
+  if (/429|rate.?limit/i.test(raw)) return "The agent's language model is rate-limited right now. Try again shortly.";
+  if (/timeout|timed out|aborted/i.test(raw)) return "That took too long and was cancelled. Nothing was charged and no escrow was opened.";
+  if (/inconsistent brief|do not sum/i.test(raw)) {
+    return "Could not produce a coherent brief from that instruction. Try stating the deliverable, budget, and deadline explicitly.";
+  }
+  return "Could not open this commission. The failure has been logged.";
+}
+
+function readBody(req: http.IncomingMessage): Promise<string> {
+  return new Promise((resolve) => {
+    let raw = "";
+    req.on("data", (c) => (raw += c));
+    req.on("end", () => resolve(raw));
+  });
+}
+
+const BOOTED_AT = Date.now();
+
+/**
+ * What the dispute backfill did on this boot, reported over /healthz.
+ *
+ * A repair that runs on startup and logs to stdout is invisible from outside,
+ * and stdout is exactly what you cannot read on a hosted daemon without going
+ * looking for it. Today that meant "the backfill found nothing" and "the deploy
+ * never happened" were indistinguishable.
+ */
+let backfillState: { status: string; found?: number; wrote?: string[]; error?: string } = { status: "pending" };
+
+function json(res: http.ServerResponse, status: number, data: unknown) {
+  res.writeHead(status, { "Content-Type": "application/json" });
+  res.end(JSON.stringify(data));
+}
+
+/** Shared by both the x402 (agent) and unguarded (human) entrypoints. */
+async function runHireFlow(
+  instruction: string,
+  clientType: "agent" | "human",
+  clientAddress?: string,
+  /**
+   * The client's own title, kept VERBATIM when they gave one.
+   *
+   * The brief generator writes its own, and it was overwriting theirs every
+   * time: someone typed "Grantfox" and the ledger called their commission
+   * "Robust Open Source Platform Development". A project has a name, the person
+   * paying for it chose that name, and a generated restatement of the
+   * description is not an improvement on it.
+   *
+   * Applied after generation rather than asked for in the prompt, because a
+   * client's title should not depend on a model choosing to comply.
+   */
+  clientTitle?: string,
+) {
+  const taskId = randomUUID();
+  store.insertTask({ id: taskId, escrowId: null, instruction, clientType, status: "briefing", briefJson: null, clientAddress });
+
+  try {
+    const { brief, escrowId } = await agent.processInstruction(instruction);
+    const titled = clientTitle?.trim() ? { ...brief, title: clientTitle.trim().slice(0, 90) } : brief;
+    store.updateTaskBrief(taskId, JSON.stringify(titled));
+    store.updateTaskStatus(taskId, "posted", escrowId.toString());
+    return { taskId, escrowId: escrowId.toString(), brief: titled };
+  } catch (err) {
+    // Without this the row stays "briefing" forever — the LLM call or the
+    // createEscrow write failed (insufficient treasury, RPC hiccup, bad
+    // instruction) and nothing ever moved it on. Six such ghosts had piled up
+    // locally, and because the stats bar counts briefing as in-progress they
+    // were silently inflating "in progress" while never being real work.
+    store.updateTaskStatus(taskId, "failed");
+    broadcast({
+      type: "error",
+      message: `Could not open this commission: ${err instanceof Error ? err.message : String(err)}`,
+      timestamp: Date.now(),
+    });
+    throw err;
+  }
+}
+
+const server = http.createServer(async (req, res) => {
+  const url = new URL(req.url ?? "/", `http://localhost:${PORT}`);
+
+  // CORS: the command-center web viewer runs on a different origin (Vite dev
+  // server / static host) and only ever does reads — safe to allow from anywhere.
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-Payment");
+  // Without this the browser can SEE the response but not the header on it, so
+  // a paged reader would have no idea how many pages there are.
+  res.setHeader("Access-Control-Expose-Headers", "X-Total-Count, X-Total-In, X-Total-Out");
+  if (req.method === "OPTIONS") {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
+
+  // ── SSE stream ──
+  if (req.method === "GET" && url.pathname === "/events") {
+    res.writeHead(200, {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+    });
+    res.write(": connected\n\n");
+    sseClients.add(res);
+    req.on("close", () => sseClients.delete(res));
+    return;
+  }
+
+  // ── x402-gated: AI agents commission Atelier ──
+  if (req.method === "POST" && url.pathname === "/api/hire") {
+    try {
+      const gateway = getGateway();
+      const applyPaywall = createAtelierPaywall(gateway.address as `0x${string}`, ORDER_FEE_USDC);
+      const proceed = await applyPaywall(req, res);
+      if (!proceed) return; // paywall already wrote 402 or an error
+
+      // The x402 commission fee that just cleared — "Payment 1: robot → Atelier" in
+      // the demo script. The middleware verifies+settles before we get here but
+      // never persists anything; this is the only place that payment is recorded.
+      const payment = (req as unknown as { payment?: { payer?: string; transaction?: string } }).payment;
+      const paymentEvent: AgentEvent = {
+        type: "payment_released",
+        message: `Received $${ORDER_FEE_USDC} USDC commission from ${payment?.payer ?? "an AI agent"}.`,
+        txHash: payment?.transaction,
+        amountUsdc: ORDER_FEE_USDC,
+        timestamp: Date.now(),
+      };
+      broadcast(paymentEvent);
+      store.recordPayment({
+        id: randomUUID(),
+        direction: "in",
+        amountUsdc: ORDER_FEE_USDC,
+        counterparty: payment?.payer,
+        txHash: payment?.transaction,
+        reason: "x402_hire_fee",
+      });
+
+      const body = JSON.parse(await readBody(req)) as { instruction?: string };
+      if (!body.instruction) return json(res, 400, { error: "instruction is required" });
+
+      const result = await runHireFlow(body.instruction, "agent", payment?.payer);
+      json(res, 200, result);
+    } catch (err) {
+      json(res, 500, { error: clientError(err) });
+    }
+    return;
+  }
+
+  /**
+   * Read-only brief preview.
+   *
+   * Atelier needs to show a client what the agent proposes — title, budget,
+   * duration, acceptance criteria, and the milestone split — BEFORE any money
+   * moves. /api/instruct cannot serve that: it generates the brief and opens a
+   * funded escrow in the same call, so the only way to see the agent's proposal
+   * was to have already paid for it.
+   *
+   * This runs the same BriefGenerator and stops. It creates no task, opens no
+   * escrow, debits no treasury and writes nothing to the store — so it needs no
+   * signature and no deposit, and a client can try three phrasings before
+   * committing to one.
+   *
+   * It does cost an LLM call, which is why the instruction is length-capped:
+   * this endpoint is unauthenticated by design and would otherwise be a free
+   * inference proxy for anyone who found it.
+   */
+  if (req.method === "POST" && url.pathname === "/api/brief/preview") {
+    try {
+      const body = JSON.parse(await readBody(req)) as { instruction?: string };
+      const instruction = (body.instruction ?? "").trim();
+
+      if (!instruction) return json(res, 400, { error: "instruction is required" });
+      if (instruction.length > 1000) {
+        return json(res, 400, { error: "That instruction is too long — describe the job in a sentence or two." });
+      }
+
+      const stated = extractStatedBudget(instruction);
+      if (stated == null) {
+        return json(res, 400, { error: 'State a budget in the instruction, e.g. "Budget $50".' });
+      }
+      if (stated > config.maxJobBudgetUsdc) {
+        return json(res, 400, {
+          error: `That is over the current per-job cap of $${config.maxJobBudgetUsdc}.`,
+        });
+      }
+
+      const { brief, stopReason } = await generateBrief(instruction);
+
+      // Said explicitly in the payload so a caller cannot mistake a preview for
+      // a commissioned job — nothing here has been paid for or posted.
+      json(res, 200, { brief, stopReason, preview: true, escrowId: null });
+    } catch (err) {
+      json(res, 500, { error: clientError(err) });
+    }
+    return;
+  }
+
+  // ── Unguarded: the human front door (same pipeline, no x402 fee) ──
+  if (req.method === "POST" && url.pathname === "/api/instruct") {
+    try {
+      const body = JSON.parse(await readBody(req)) as {
+        instruction?: string;
+        /** The client's own words for what this job is called. */
+        title?: string;
+        clientAddress?: string;
+        signature?: string;
+        message?: string;
+      };
+      if (!body.instruction) return json(res, 400, { error: "instruction is required" });
+
+      /**
+       * A depositor may only commission what they have actually put in.
+       *
+       * Enforced HERE and not only in the browser, because the browser is not a
+       * security boundary — this endpoint is public, and a cap that lives in a
+       * form is a suggestion. When a client identifies themselves they sign for
+       * it, exactly like a withdrawal: the treasury is a shared pot, and
+       * spending against someone else's deposit by typing their address would
+       * be the same theft as withdrawing it.
+       *
+       * Posting anonymously is still allowed — that is the "try it yourself"
+       * demo path — and stays bounded by MAX_JOB_BUDGET_USDC as before.
+       */
+      let payer: string | null = null;
+      {
+        // Required, not optional. Leaving an anonymous path open meant the UI
+        // could demand a wallet while the endpoint underneath happily accepted
+        // a bare POST and spent the shared treasury — a cap enforced in a form
+        // is a suggestion. Agents come through /api/hire and pay via x402;
+        // humans come through here and commission against their own deposit.
+        if (!body.clientAddress) {
+          return json(res, 401, {
+            error: "Connect a wallet and deposit before commissioning. Every job is funded from its client's own balance.",
+          });
+        }
+        if (!/^0x[a-fA-F0-9]{40}$/.test(body.clientAddress)) return json(res, 400, { error: "That is not a valid address." });
+        const stated = extractStatedBudget(body.instruction);
+        if (stated == null) return json(res, 400, { error: "State a budget in the instruction, e.g. \"Budget $5\"." });
+
+        const expected = commissionMessage(body.clientAddress, stated.toFixed(6));
+        if (body.message !== expected) return json(res, 400, { error: "That signature does not match this commission." });
+        const valid = await verifyMessage({
+          address: body.clientAddress as `0x${string}`,
+          message: body.message,
+          signature: (body.signature ?? "0x") as `0x${string}`,
+        }).catch(() => false);
+        if (!valid) return json(res, 401, { error: "Signature did not verify — this address did not authorise the commission." });
+
+        const account = store.treasuryAccount(body.clientAddress);
+        if (stated > account.net + 1e-9) {
+          return json(res, 400, {
+            error:
+              account.net <= 0
+                ? "You haven't deposited anything to commission with yet. Fund the treasury first — you can withdraw whatever you don't spend."
+                : `That's more than your deposit. You have $${account.net.toFixed(2)} left to commission with.`,
+          });
+        }
+        payer = body.clientAddress;
+      }
+
+      const result = await runHireFlow(body.instruction, "human", payer ?? undefined, body.title);
+
+      // Debit the real brief amount, not the stated one — the agent
+      // rescales a budget that doesn't add up, and the ledger has to record
+      // what was actually locked in escrow.
+      if (payer) {
+        store.recordTreasuryEntry({
+          id: randomUUID(),
+          party: payer,
+          direction: "spend",
+          amountUsdc: Number(result.brief.budget).toFixed(6),
+          txHash: `commission:${result.escrowId}`,
+        });
+      }
+      json(res, 200, result);
+    } catch (err) {
+      json(res, 500, { error: clientError(err) });
+    }
+    return;
+  }
+
+  // ── REST for the command center ──
+  if (req.method === "GET" && url.pathname === "/api/tasks") {
+    return json(res, 200, store.listTasks());
+  }
+  /**
+   * Which tokens an escrow can actually be funded in.
+   *
+   * Reconstructed from logs and re-checked against the contract's mapping, so a
+   * delisted token disappears from here rather than being offered and then
+   * reverting at createEscrow. Callers should treat one token as a statement
+   * and more than one as a question worth asking the client.
+   */
+  /**
+   * The limits the daemon enforces, so the UI can respect them instead of
+   * discovering them by being refused.
+   *
+   * The per-job cap lived only in this file, so the compose page shipped an
+   * example instruction of "Budget $120" against a $100 cap: one of the three
+   * suggestions the product offered was guaranteed to be rejected, and the only
+   * way to find out was to spend a model call on it.
+   */
+  /*
+   * What Autopilot would judge this job by — before the client signs it over.
+   *
+   * Read-only and unauthenticated on purpose: it reveals nothing that is not
+   * already on-chain in the escrow's own description, and requiring a signature
+   * to read your own job's criteria would put a wallet popup in front of a
+   * dialog whose entire job is to show you something.
+   */
+  if (req.method === "GET" && url.pathname === "/api/handover/preview") {
+    const escrowId = (url.searchParams.get("escrowId") ?? "").trim();
+    if (!/^\d+$/.test(escrowId)) return json(res, 400, { error: "escrowId is required" });
+    try {
+      const { criteria, title, titleConflict } = await handover.previewCriteria(escrowId);
+      const prefs = handover.getPrefs(escrowId);
+      return json(res, 200, {
+        escrowId,
+        title,
+        criteria,
+        titleConflict: titleConflict ?? null,
+        applicationWindowMinutes: prefs?.applicationWindowMinutes ?? config.applicationWindowMinutes,
+        defaultWindowMinutes: config.applicationWindowMinutes,
+        minWindowMinutes: handover.MIN_WINDOW_MINUTES,
+        maxWindowMinutes: handover.MAX_WINDOW_MINUTES,
+        approved: prefs !== null,
+      });
+    } catch (err) {
+      return json(res, 500, { error: clientError(err) });
+    }
+  }
+
+  /*
+   * The client fixing those criteria and their review window.
+   *
+   * Signed the same way a cancellation is, and for the same reason: the escrow
+   * id is printed on every card, so an unsigned endpoint would let anyone
+   * rewrite the standard another client's job is judged by. The sentence names
+   * the escrow and the window, so a signature for one hand-over cannot be
+   * replayed onto a different job or a different window.
+   */
+  if (req.method === "POST" && url.pathname === "/api/handover/prefs") {
+    try {
+      const b = JSON.parse(await readBody(req)) as {
+        escrowId?: string;
+        criteria?: unknown;
+        applicationWindowMinutes?: unknown;
+        address?: string;
+        message?: string;
+        signature?: string;
+      };
+      const escrowId = (b.escrowId ?? "").trim();
+      if (!/^\d+$/.test(escrowId)) return json(res, 400, { error: "escrowId is required" });
+
+      const windowMinutes = handover.clampWindow(b.applicationWindowMinutes);
+      if (windowMinutes === null) {
+        return json(res, 400, {
+          error: `Choose a review window between ${handover.MIN_WINDOW_MINUTES} minute and ${handover.MAX_WINDOW_MINUTES} minutes.`,
+        });
+      }
+
+      const esc = await handover.readEscrow(escrowId);
+      if (!b.address || b.address.toLowerCase() !== esc.depositor.toLowerCase()) {
+        return json(res, 403, { error: "Only the client who funded this job can set how Autopilot runs it." });
+      }
+
+      const expected = handover.handoverMessage(esc.depositor, escrowId, windowMinutes);
+      if (b.message !== expected) return json(res, 400, { error: "That signature does not match these settings." });
+      const valid = await verifyMessage({
+        address: esc.depositor as `0x${string}`,
+        message: expected,
+        signature: (b.signature ?? "0x") as `0x${string}`,
+      }).catch(() => false);
+      if (!valid) return json(res, 401, { error: "Signature did not verify — this address did not authorise these settings." });
+
+      const criteria = Array.isArray(b.criteria)
+        ? b.criteria.map((c) => String(c).trim()).filter(Boolean).slice(0, 20)
+        : [];
+
+      handover.savePrefs(escrowId, {
+        criteria,
+        applicationWindowMinutes: windowMinutes,
+        approvedAt: Date.now(),
+      });
+
+      /*
+       * A job already adopted keeps running under the old brief otherwise. The
+       * client changed the standard on a job the poller is already sweeping, so
+       * the brief it reads has to change with it.
+       */
+      const task = store.listTasks(300).find((t) => t.escrowId === escrowId);
+      if (task?.briefJson) {
+        try {
+          const brief = JSON.parse(task.briefJson) as Record<string, unknown>;
+          if (criteria.length > 0) brief.criteria = criteria;
+          brief.applicationWindowMinutes = windowMinutes;
+          store.updateTaskBrief(task.id, JSON.stringify(brief));
+        } catch {
+          /* leave a malformed brief alone rather than replacing it with a guess */
+        }
+      }
+
+      return json(res, 200, { ok: true, escrowId, applicationWindowMinutes: windowMinutes, criteria });
+    } catch (err) {
+      return json(res, 500, { error: clientError(err) });
+    }
+  }
+
+  /*
+   * What a freelancer is being measured against.
+   *
+   * Telegram has printed criteria for a job since the bot existed; the web card
+   * showed a title and a budget. Same job, two different descriptions of what
+   * it takes to get paid — and the web was the one missing the answer.
+   */
+  if (req.method === "GET" && url.pathname === "/api/jobs/criteria") {
+    const escrowId = (url.searchParams.get("escrowId") ?? "").trim();
+    if (!/^\d+$/.test(escrowId)) return json(res, 400, { error: "escrowId is required" });
+    const { criteria, source } = handover.criteriaFor(escrowId);
+    const prefs = handover.getPrefs(escrowId);
+    return json(res, 200, {
+      escrowId,
+      criteria,
+      source,
+      applicationWindowMinutes: prefs?.applicationWindowMinutes ?? config.applicationWindowMinutes,
+    });
+  }
+
+  /*
+   * THE ASSISTANT. Open to anyone, so it is rate-limited by IP.
+   *
+   * A public endpoint that costs money per call needs a ceiling, and a cheap
+   * fixed window is the right amount of machinery for one: a burst is what
+   * would hurt, and a burst is exactly what this stops.
+   */
+  if (req.method === "POST" && url.pathname === "/api/ask") {
+    const who = (req.socket.remoteAddress ?? "unknown") as string;
+    if (!askAllowance(who)) {
+      return json(res, 429, {
+        error: "That is a lot of questions at once — give it a moment and ask again.",
+      });
+    }
+
+    try {
+      const body = JSON.parse(await readBody(req)) as {
+        messages?: { role?: string; content?: string }[];
+        viewer?: { role?: string | null; hiring?: number; working?: number; page?: string | null };
+      };
+
+      const turns = Array.isArray(body.messages)
+        ? body.messages.map((m) => ({ role: m.role === "assistant" ? "assistant" as const : "user" as const, content: String(m.content ?? "") }))
+        : [];
+
+      const answer = await askAtelier(turns, body.viewer);
+      return json(res, 200, { answer });
+    } catch (err) {
+      if (err instanceof QuestionRejected) return json(res, 400, { error: err.message });
+      if (err instanceof AssistantUnavailable) {
+        return json(res, 503, {
+          error: "The assistant is unavailable right now. Everything else works normally.",
+        });
+      }
+      return json(res, 500, { error: clientError(err) });
+    }
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/limits") {
+    return json(res, 200, {
+      maxJobBudgetUsdc: config.maxJobBudgetUsdc,
+      applicationWindowMinutes: config.applicationWindowMinutes,
+    });
+  }
+  if (req.method === "GET" && url.pathname === "/api/tokens") {
+    try {
+      return json(res, 200, await listWhitelistedTokens());
+    } catch (err) {
+      return json(res, 502, { error: "Could not read the token whitelist from the chain.", detail: String(err) });
+    }
+  }
+  /**
+   * The decision log, paged.
+   *
+   * Still returns a bare array so every existing caller keeps working; the
+   * total rides along in a header rather than changing the response shape.
+   * Without limit/offset there was no way to read past the newest 100, which
+   * meant the public record quietly began deleting itself once traffic arrived.
+   */
+  if (req.method === "GET" && url.pathname === "/api/decisions") {
+    const limit = Math.min(Math.max(Number(url.searchParams.get("limit")) || 100, 1), 200);
+    const offset = Math.max(Number(url.searchParams.get("offset")) || 0, 0);
+    res.setHeader("X-Total-Count", String(store.countDecisions()));
+    return json(res, 200, store.listDecisions(limit, offset));
+  }
+  /**
+   * The payment feed, paged.
+   *
+   * The totals ride in headers because they must describe the WHOLE ledger, not
+   * the page being viewed. Summing the rows the browser happens to hold was
+   * correct only while it held all of them.
+   */
+  if (req.method === "GET" && url.pathname === "/api/payments") {
+    const limit = Math.min(Math.max(Number(url.searchParams.get("limit")) || 100, 1), 200);
+    const offset = Math.max(Number(url.searchParams.get("offset")) || 0, 0);
+    const totals = store.paymentTotals();
+    res.setHeader("X-Total-Count", String(store.countPayments()));
+    res.setHeader("X-Total-In", totals.in.toFixed(6));
+    res.setHeader("X-Total-Out", totals.out.toFixed(6));
+    return json(res, 200, store.listPayments(limit, offset));
+  }
+
+  /**
+   * The public commission board — every task that actually opened an escrow.
+   * Separate from /api/tasks, which stays exactly as it was for the dashboard
+   * and for anything already consuming it.
+   */
+  if (req.method === "GET" && url.pathname === "/api/commissions") {
+    const limit = Math.min(Math.max(Number(url.searchParams.get("limit")) || 20, 1), 100);
+    const offset = Math.max(Number(url.searchParams.get("offset")) || 0, 0);
+    res.setHeader("X-Total-Count", String(store.countCommissions()));
+    return json(res, 200, store.listCommissions(limit, offset));
+  }
+  /**
+   * Health, plus WHICH BUILD is answering.
+   *
+   * `{ok: true}` alone cost hours today. A fix went out, the behaviour did not
+   * change, and there was no way to tell whether the deploy had landed, the
+   * code was wrong, or the repair had silently failed — so the same bug got
+   * diagnosed three times against a daemon that may never have been running the
+   * fix. Railway injects the commit sha; the boot time distinguishes a restart
+   * from a redeploy of identical code.
+   */
+  if (req.method === "GET" && url.pathname === "/healthz") {
+    return json(res, 200, {
+      ok: true,
+      commit: (process.env.RAILWAY_GIT_COMMIT_SHA ?? "unknown").slice(0, 7),
+      startedAt: BOOTED_AT,
+      uptimeSeconds: Math.round((Date.now() - BOOTED_AT) / 1000),
+      // Which MODEL and which BAR are actually live. Code version alone was not
+      // enough: the hire threshold and the model are environment variables, and
+      // a daemon running the right code against the wrong model looks identical
+      // from outside — that combination silently took hiring from 9-in-9 to
+      // 1-in-9 during the llama-3.3 decommission.
+      model: config.groqModel,
+      fallbackModel: config.groqFallbackModel,
+      hireScoreThreshold: config.hireScoreThreshold,
+      disputeBackfill: backfillState,
+    });
+  }
+
+  // Treasury address + live balance — read-only, no key material involved. The
+  // command center shows this so a user knows what Atelier can actually afford
+  // before posting a job, and where to send funds to top it up.
+  if (req.method === "GET" && url.pathname === "/api/wallet") {
+    try {
+      /*
+       * The address must survive a bad RPC. The balance need not.
+       *
+       * This read the balance first and 500'd the whole endpoint when that
+       * failed — and handing a job to Autopilot asks this endpoint which key
+       * the agent signs with. So a momentary RPC hiccup, on a call that has
+       * nothing to do with delegation, came back as "Could not hand over the
+       * job — Autopilot returned 500 for /api/wallet" and the client could do
+       * nothing but try again and hope.
+       *
+       * The address is configuration. It cannot fail, so it must not be behind
+       * something that can.
+       */
+      let balance: string | null = null;
+      try {
+        const publicClient = createPublicClient({ chain: arcTestnet, transport: viemHttp(rpcUrl) });
+        balance = formatEther(
+          await publicClient.getBalance({ address: config.circleWalletAddress as `0x${string}` }),
+        );
+      } catch (err) {
+        console.warn("[wallet] balance read failed:", err instanceof Error ? err.message : err);
+      }
+
+      return json(res, 200, {
+        address: config.circleWalletAddress,
+        balance,
+        explorerUrl: `https://testnet.arcscan.app/address/${config.circleWalletAddress}`,
+      });
+    } catch (err) {
+      return json(res, 500, { error: err instanceof Error ? err.message : String(err) });
+    }
+  }
+
+  /**
+   * A depositor's own position in the pooled treasury.
+   *
+   * `withdrawable` is deliberately NOT just what they put in. The treasury is a
+   * single pooled wallet that Atelier spends from to fund escrows, and money in
+   * an escrow has genuinely left it — so if someone deposits $5 and Atelier
+   * commissions $5 of work, there is nothing to give back until that work
+   * settles. Paying the first person to ask, out of a pot that is backing other
+   * people's live commissions, is a bank run with extra steps.
+   *
+   * So the cap is the LESSER of what they are owed and what is actually here.
+   */
+  if (req.method === "GET" && url.pathname === "/api/treasury/account") {
+    const address = (url.searchParams.get("address") ?? "").trim();
+    if (!/^0x[a-fA-F0-9]{40}$/.test(address)) return json(res, 400, { error: "a valid address is required" });
+    try {
+      const account = store.treasuryAccount(address);
+      const onHand = await treasuryBalance();
+      // Keep a little back so Atelier can still sign; a treasury that cannot pay
+      // gas cannot pay anyone.
+      const spendable = Math.max(0, onHand - TREASURY_GAS_FLOOR);
+      return json(res, 200, {
+        address,
+        deposited: account.deposited.toFixed(6),
+        withdrawn: account.withdrawn.toFixed(6),
+        spent: account.spent.toFixed(6),
+        refunded: account.refunded.toFixed(6),
+        claim: account.net.toFixed(6),
+        withdrawable: Math.min(account.net, spendable).toFixed(6),
+        treasuryOnHand: onHand.toFixed(6),
+        entries: store.treasuryEntries(address, 20),
+      });
+    } catch (err) {
+      return json(res, 500, { error: clientError(err) });
+    }
+  }
+
+  /**
+   * Claim a deposit.
+   *
+   * VERIFIED ON-CHAIN before it is credited — the client reports a transaction
+   * hash and we go and read it: it must exist, be mined, be addressed to this
+   * treasury, and come from the address claiming it. Trusting the browser here
+   * would let anyone type a number and withdraw it.
+   */
+  if (req.method === "POST" && url.pathname === "/api/treasury/deposit") {
+    try {
+      const b = JSON.parse(await readBody(req)) as { txHash?: string; from?: string };
+      if (!b.txHash || !b.from) return json(res, 400, { error: "txHash and from are required" });
+
+      const pub = createPublicClient({ chain: arcTestnet, transport: viemHttp(rpcUrl) });
+      const tx = await pub.getTransaction({ hash: b.txHash as `0x${string}` }).catch(() => null);
+      if (!tx) return json(res, 404, { error: "That transaction could not be found on Arc yet. Give it a moment and try again." });
+
+      const receipt = await pub.getTransactionReceipt({ hash: b.txHash as `0x${string}` }).catch(() => null);
+      if (!receipt || receipt.status !== "success") return json(res, 400, { error: "That transaction has not succeeded." });
+
+      const treasury = config.circleWalletAddress.toLowerCase();
+      if ((tx.to ?? "").toLowerCase() !== treasury) return json(res, 400, { error: "That transaction did not pay Atelier's treasury." });
+      if (tx.from.toLowerCase() !== b.from.toLowerCase()) return json(res, 400, { error: "That transaction was not sent from this address." });
+      if (tx.value <= 0n) return json(res, 400, { error: "That transaction moved no funds." });
+
+      const amount = Number(formatEther(tx.value)).toFixed(6);
+      const credited = store.recordTreasuryEntry({
+        id: randomUUID(),
+        party: b.from,
+        direction: "deposit",
+        amountUsdc: amount,
+        txHash: b.txHash,
+      });
+      // Not an error: the UI reports the deposit and the user may refresh.
+      return json(res, 200, { credited, amount, account: store.treasuryAccount(b.from) });
+    } catch (err) {
+      return json(res, 500, { error: clientError(err) });
+    }
+  }
+
+  /**
+   * Withdraw a deposit.
+   *
+   * Authorised by a SIGNATURE from the depositing address, not by asking. The
+   * treasury is Atelier's wallet, so an endpoint that pays out to whatever
+   * address the caller names would let anyone drain everyone else's deposits by
+   * typing their address — the signature is what proves the caller controls it.
+   */
+  if (req.method === "POST" && url.pathname === "/api/treasury/withdraw") {
+    try {
+      const b = JSON.parse(await readBody(req)) as { address?: string; amountUsdc?: string; signature?: string; message?: string };
+      if (!b.address || !b.amountUsdc || !b.signature || !b.message) {
+        return json(res, 400, { error: "address, amountUsdc, signature and message are required" });
+      }
+      if (!/^0x[a-fA-F0-9]{40}$/.test(b.address)) return json(res, 400, { error: "That is not a valid address." });
+
+      const amount = Number(b.amountUsdc);
+      if (!(amount > 0)) return json(res, 400, { error: "The amount has to be a positive number." });
+
+      // The signed message must name THIS withdrawal, so a signature captured
+      // for one amount cannot be replayed for a larger one.
+      const expected = withdrawalMessage(b.address, b.amountUsdc);
+      if (b.message !== expected) return json(res, 400, { error: "That signature does not match this withdrawal." });
+
+      const valid = await verifyMessage({
+        address: b.address as `0x${string}`,
+        message: b.message,
+        signature: b.signature as `0x${string}`,
+      }).catch(() => false);
+      if (!valid) return json(res, 401, { error: "Signature did not verify — this address did not authorise the withdrawal." });
+
+      const account = store.treasuryAccount(b.address);
+      const onHand = await treasuryBalance();
+      const spendable = Math.max(0, onHand - TREASURY_GAS_FLOOR);
+      const cap = Math.min(account.net, spendable);
+      if (amount > cap + 1e-9) {
+        return json(res, 400, {
+          error:
+            account.net < amount
+              ? `You can withdraw at most $${account.net.toFixed(2)} — that's what you've deposited and not yet taken back.`
+              : `Only $${spendable.toFixed(2)} is currently in the treasury; the rest is locked in escrow against live commissions. It becomes withdrawable as those settle.`,
+        });
+      }
+
+      const gateway = getGateway();
+      const sent = await gateway.transferUsdc(b.address as `0x${string}`, amount.toFixed(6));
+      store.recordTreasuryEntry({
+        id: randomUUID(),
+        party: b.address,
+        direction: "withdrawal",
+        amountUsdc: amount.toFixed(6),
+        txHash: sent.hash,
+      });
+      store.recordPayment({
+        id: randomUUID(),
+        direction: "out",
+        amountUsdc: amount.toFixed(6),
+        counterparty: b.address,
+        txHash: sent.hash,
+        reason: "depositor_withdrawal",
+      });
+      broadcast({
+        type: "task_completed",
+        message: `Depositor withdrawal — $${amount.toFixed(2)} returned to ${b.address.slice(0, 10)}…`,
+        txHash: sent.hash,
+        amountUsdc: amount.toFixed(6),
+        timestamp: Date.now(),
+      });
+      return json(res, 200, { txHash: sent.hash, amountUsdc: amount.toFixed(6), account: store.treasuryAccount(b.address) });
+    } catch (err) {
+      return json(res, 500, { error: clientError(err) });
+    }
+  }
+
+  // ── The human front door (managed-worker layer) ──────────────────────────
+  // Same pipeline as everything else: an application submitted here lands on
+  // the Atelier subgraph, and the poller picks it up without knowing or
+  // caring that a person on a web page produced it.
+
+  if (req.method === "POST" && url.pathname === "/api/worker/join") {
+    try {
+      /**
+       * NOTE what is NOT in this shape: channelRef.
+       *
+       * join() short-circuits on channelRef and returns the existing worker for
+       * that key before it looks at anything else — so accepting one from the
+       * request body was the same wallet-theft hole through a second door.
+       * `{ ownAddress: mine, channelRef: "victim@example.com" }` would have
+       * handed back the victim's account, token or no token. The only channelRef
+       * this endpoint may use is the one derived from a verified sign-in.
+       */
+      const body = JSON.parse(await readBody(req)) as {
+        handle?: string;
+        /** A Google ID token. NOT an email — see below. */
+        idToken?: string;
+        skills?: string;
+        ownAddress?: string;
+      };
+      if (!body.handle) return json(res, 400, { error: "handle is required" });
+
+      /**
+       * THE EMAIL MUST BE PROVEN, not typed.
+       *
+       * This used to take `email` as a plain string and select a wallet from
+       * it. A worker id grants the right to WITHDRAW, so that turned a
+       * freelancer's email address into their private key: anyone who knew it
+       * could take their money. It was wrong and it is fixed here.
+       *
+       * A managed wallet now requires a Google ID token, verified against
+       * Google's public keys — signature, issuer, audience and email_verified —
+       * before any account is selected. The client presents evidence of an
+       * identity; it never gets to assert one.
+       *
+       * Someone bringing their OWN address needs none of this: they hold the
+       * keys, so there is nothing here to steal.
+       */
+      let email: string | undefined;
+      if (!body.ownAddress) {
+        try {
+          const identity = await verifyGoogleIdToken(body.idToken ?? "");
+          email = identity.email;
+        } catch (err) {
+          return json(res, 401, {
+            error: err instanceof Error ? err.message : "Sign-in failed.",
+          });
+        }
+      }
+
+      const worker = await workers.join({
+        handle: body.handle,
+        channel: "web",
+        channelRef: email,
+        skills: body.skills,
+        ownAddress: body.ownAddress as `0x${string}` | undefined,
+      });
+      // walletId is deliberately not returned — it is Circle's handle on the
+      // wallet, of no use to a browser and not something to put in a response.
+      return json(res, 200, {
+        id: worker.id,
+        handle: worker.handle,
+        address: worker.walletAddress,
+        mode: worker.mode,
+        signedInAs: worker.channelRef ?? null,
+        /*
+         * Whether this signed somebody IN or signed somebody UP.
+         *
+         * join is idempotent, so a returning person gets their existing wallet
+         * back — and the app told them "a wallet has been created for you"
+         * either way. For someone with two Google accounts that sentence is how
+         * a wrong-account sign-in reads as the app having lost their money.
+         */
+        returning: worker.createdAt < Date.now() - 5_000,
+      });
+    } catch (err) {
+      return json(res, 500, { error: clientError(err) });
+    }
+  }
+
+  /**
+   * Come back to an account you already have.
+   *
+   * POST, not GET, and it takes a Google ID token rather than an email. The GET
+   * version of this took ?email= and handed back a worker id, which is a
+   * withdrawal credential — so it was a public endpoint that gave away other
+   * people's wallets to anyone who knew their address. Replaced rather than
+   * patched, because the shape of it was the problem.
+   */
+  if (req.method === "POST" && url.pathname === "/api/worker/recover") {
+    try {
+      const body = JSON.parse(await readBody(req)) as { idToken?: string };
+
+      let email: string;
+      try {
+        const identity = await verifyGoogleIdToken(body.idToken ?? "");
+        email = identity.email;
+      } catch (err) {
+        return json(res, 401, {
+          error: err instanceof Error ? err.message : "Sign-in failed.",
+        });
+      }
+
+      const worker = store.getWorkerByChannelRef("web", email);
+      if (!worker) {
+        return json(res, 404, {
+          error: "No account for that Google account yet. Create one and it is yours from then on.",
+        });
+      }
+      return json(res, 200, {
+        id: worker.id,
+        handle: worker.handle,
+        address: worker.walletAddress,
+        mode: worker.mode,
+      });
+    } catch (err) {
+      return json(res, 500, { error: clientError(err) });
+    }
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/worker/quests") {
+    return json(res, 200, await workers.openQuests());
+  }
+
+  /**
+   * On-chain reputation, read straight from Atelier.
+   *
+   * Deliberately NOT computed from our own database: the point of putting
+   * ratings on the contract is that anyone can verify them without trusting us,
+   * so this endpoint reads the same source a stranger would.
+   */
+  if (req.method === "GET" && url.pathname === "/api/ratings") {
+    const addresses = (url.searchParams.get("addresses") ?? "")
+      .split(",")
+      .map((a) => a.trim())
+      .filter((a) => /^0x[a-fA-F0-9]{40}$/.test(a))
+      .slice(0, 25);
+    if (addresses.length === 0) return json(res, 200, {});
+    try {
+      const entries = await Promise.all(
+        addresses.map(async (a) => {
+          try {
+            return [a.toLowerCase(), await atelier.getAverageRating(a as `0x${string}`)] as const;
+          } catch {
+            return [a.toLowerCase(), { average: 0, count: 0 }] as const;
+          }
+        }),
+      );
+      return json(res, 200, Object.fromEntries(entries));
+    } catch (err) {
+      return json(res, 500, { error: clientError(err) });
+    }
+  }
+
+  /**
+   * Cancel an unfilled commission and return its budget to the treasury.
+   *
+   * Guarded here as well as on-chain: the contract refuses once a freelancer is
+   * hired, but refusing earlier gives a readable reason instead of a revert, and
+   * makes the rule explicit to anyone reading this file — money stops being
+   * reclaimable the moment a human has a claim on it.
+   */
+  if (req.method === "POST" && url.pathname === "/api/jobs/cancel") {
+    try {
+      const b = JSON.parse(await readBody(req)) as { escrowId?: string; address?: string; signature?: string; message?: string };
+      if (!b.escrowId) return json(res, 400, { error: "escrowId is required" });
+
+      const task = store.listTasks(300).find((t) => t.escrowId === b.escrowId);
+      if (!task) return json(res, 404, { error: "No such commission." });
+
+      /**
+       * Only the client who paid for it may cancel it.
+       *
+       * This endpoint took an escrow id and nothing else. Anyone who could read
+       * a job number — they are printed on every card — could cancel any open
+       * commission in the system. The refund goes to the recorded client, so
+       * there was nothing to steal, but griefing every open job on the board is
+       * not much better, and it destroys an applicant's pending application.
+       *
+       * Signed, like withdrawals and commissions: the sentence names the escrow,
+       * so a signature for one cancellation cannot cancel a different job.
+       */
+      if (!task.clientAddress) {
+        // No recorded client means nobody can be verified as its owner, so
+        // there is no safe way to let anyone cancel it by hand. These are jobs
+        // posted before commissions were signed; the expiry sweep still returns
+        // their budget automatically once the client's own deadline passes, so
+        // the money is not stuck — it just isn't cancellable on demand.
+        return json(res, 403, {
+          error:
+            "This commission has no recorded client, so it can't be cancelled by hand. Its budget returns automatically when the deadline passes.",
+        });
+      }
+      {
+        const expected = cancelMessage(task.clientAddress, b.escrowId);
+        if (!b.address || b.address.toLowerCase() !== task.clientAddress.toLowerCase()) {
+          return json(res, 403, { error: "Only the client who commissioned this job can cancel it." });
+        }
+        if (b.message !== expected) return json(res, 400, { error: "That signature does not match this cancellation." });
+        const valid = await verifyMessage({
+          address: task.clientAddress as `0x${string}`,
+          message: expected,
+          signature: (b.signature ?? "0x") as `0x${string}`,
+        }).catch(() => false);
+        if (!valid) return json(res, 401, { error: "Signature did not verify — this address did not authorise the cancellation." });
+      }
+      if (task.status !== "posted") {
+        return json(res, 400, {
+          error:
+            task.status === "active"
+              ? "Someone is already working on this — their claim on the escrow is exactly what makes Atelier trustworthy, so it can't be cancelled now."
+              : `This commission is ${task.status}; only an unfilled one can be cancelled.`,
+        });
+      }
+
+      // Measure rather than assume. Atelier deducts a cancellation penalty
+      // that scales with how often you've cancelled and how many people already
+      // applied, so the amount that actually comes back is not the face value of
+      // the budget — and the client must be refunded what was really recovered.
+      const before = await treasuryBalance();
+      const txHash = await atelier.cancelJob(BigInt(b.escrowId));
+      const recovered = Math.max(0, (await treasuryBalance()) - before);
+
+      store.updateTaskStatus(task.id, "cancelled", task.escrowId ?? undefined);
+
+      // Pass it back to whoever commissioned the work.
+      //
+      // Atelier has to be the escrow depositor — Atelier only lets the
+      // depositor approve milestones, and a machine approving them is the entire
+      // product — so the contract refunds Atelier, not the client. Forwarding it
+      // is therefore a POLICY Atelier keeps, not something the contract enforces,
+      // and it is described that way everywhere rather than implied to be a
+      // guarantee.
+      let refund: { to: string; amountUsdc: string; txHash: string } | null = null;
+      if (task.clientAddress && recovered > 0) {
+        try {
+          const amount = recovered.toFixed(6);
+          const gateway = getGateway();
+          const forward = await gateway.transferUsdc(task.clientAddress as `0x${string}`, amount);
+          refund = { to: task.clientAddress, amountUsdc: amount, txHash: forward.hash };
+          store.recordPayment({
+            id: randomUUID(),
+            direction: "out",
+            escrowId: b.escrowId,
+            amountUsdc: amount,
+            counterparty: task.clientAddress,
+            txHash: forward.hash,
+            reason: "client_refund",
+          });
+        } catch (err) {
+          // The cancellation already succeeded and the money is safe in the
+          // treasury; a failed forward must not read as a failed cancellation.
+          console.error("[refund] cancelled but could not forward to the client:", err instanceof Error ? err.message : err);
+        }
+      }
+
+      broadcast({
+        type: "task_completed",
+        message: refund
+          ? `Commission cancelled — $${refund.amountUsdc} returned to the client who commissioned it.`
+          : `Commission cancelled — $${recovered.toFixed(4)} recovered to the treasury.`,
+        escrowId: b.escrowId,
+        txHash,
+        timestamp: Date.now(),
+      });
+      return json(res, 200, { txHash, recovered: recovered.toFixed(6), refund });
+    } catch (err) {
+      return json(res, 500, { error: clientError(err) });
+    }
+  }
+
+  /**
+   * The delivered work, for the person who paid for it.
+   *
+   * The loop was open at the most important point: a client commissioned a job,
+   * watched the agent hire, review and pay — and had nowhere to COLLECT
+   * what they bought. The freelancer's submission goes on-chain, is read by the
+   * poller, handed to the reviewer, and then dropped. Nothing stored it and
+   * nothing served it, so the buyer could see that their logo had been approved
+   * and paid for without ever seeing the logo.
+   *
+   * Read straight from the subgraph rather than from a copy we keep, for the
+   * same reason ratings are: the client can verify every word of this against
+   * the chain, and a cache would be one more thing that can quietly disagree
+   * with the truth.
+   */
+  if (req.method === "GET" && url.pathname === "/api/jobs/work") {
+    const escrowId = url.searchParams.get("escrowId");
+    if (!escrowId) return json(res, 400, { error: "escrowId is required" });
+    try {
+      const task = store.listTasks(300).find((t) => t.escrowId === escrowId);
+      const brief = task?.briefJson ? JSON.parse(task.briefJson) : null;
+      const planned: { description?: string; amount?: number }[] = Array.isArray(brief?.milestones) ? brief.milestones : [];
+
+      const result = await graphQuery<{ escrow: GQLEscrow | null }>(GET_JOB_BY_ID, { escrowId });
+      const onChain = new Map(
+        (result.escrow?.milestones ?? []).map((m) => [Number(m.milestoneIndex), m]),
+      );
+
+      const STATUS = ["awaiting delivery", "delivered — under review", "accepted and paid", "revision requested", "disputed", "resolved"];
+      const milestones = (planned.length ? planned : [{ description: brief?.title ?? "Deliverable", amount: brief?.budget }]).map((p, i) => {
+        const m = onChain.get(i);
+        const delivered = m?.description ?? null;
+        return {
+          index: i,
+          planned: p.description ?? "",
+          amount: p.amount ?? null,
+          status: STATUS[Number(m?.status ?? 0)] ?? "awaiting delivery",
+          statusCode: Number(m?.status ?? 0),
+          submittedAt: m?.submittedAt ? Number(m.submittedAt) * 1000 : null,
+          approvedAt: m?.approvedAt ? Number(m.approvedAt) * 1000 : null,
+          /** What the freelancer actually wrote and sent. */
+          delivered,
+          /** Pulled out so the client can just click the thing they paid for. */
+          links: delivered ? (delivered.match(/https?:\/\/[^\s<>"')]+/gi) ?? []) : [],
+        };
+      });
+
+      return json(res, 200, { escrowId, title: brief?.title ?? null, status: task?.status ?? null, milestones });
+    } catch (err) {
+      return json(res, 500, { error: clientError(err) });
+    }
+  }
+
+  /**
+   * Everything one client has commissioned, with where each job has got to.
+   *
+   * The pieces were all public already — the decision log, the payment feed,
+   * the delivered work — but they were scattered across four pages and mixed in
+   * with everyone else's. A client who paid for something had to know which
+   * escrow number was theirs and then go and assemble the story by hand. This
+   * is that story, for their address, in order.
+   */
+  if (req.method === "GET" && url.pathname === "/api/client/jobs") {
+    const address = (url.searchParams.get("address") ?? "").trim().toLowerCase();
+    if (!/^0x[a-fA-F0-9]{40}$/.test(address)) return json(res, 400, { error: "a valid address is required" });
+
+    const mine = store.listTasks(300).filter((t) => (t.clientAddress ?? "").toLowerCase() === address && t.escrowId);
+    const decisions = store.listDecisions(500);
+    const payments = store.listPayments(300);
+
+    const jobs = mine.map((t) => {
+      const brief = t.briefJson ? JSON.parse(t.briefJson) : null;
+      const mineDecisions = decisions.filter((d: { task_id?: string }) => d.task_id === t.escrowId);
+      const scored = mineDecisions.filter((d: { type?: string }) => d.type === "application_scored");
+      const hired = mineDecisions.find((d: { type?: string }) => d.type === "applicant_accepted") as { target?: string } | undefined;
+      const paid = payments
+        .filter((p: { escrow_id?: string; direction?: string }) => p.escrow_id === t.escrowId && p.direction === "escrow_release")
+        .reduce((s: number, p: { amount_usdc?: string }) => s + Number(p.amount_usdc || 0), 0);
+
+      const windowMinutes = brief?.applicationWindowMinutes ?? config.applicationWindowMinutes;
+      return {
+        escrowId: t.escrowId,
+        title: brief?.title ?? t.instruction.slice(0, 60),
+        budget: brief?.budget ?? null,
+        status: t.status,
+        createdAt: t.createdAt,
+        closesAt: t.createdAt + windowMinutes * 60_000,
+        milestones: brief?.milestones?.length ?? 1,
+        applicants: scored.length,
+        topScore: scored.reduce((m: number, d: { score?: number }) => Math.max(m, Number(d.score ?? 0)), 0),
+        hiredAddress: hired?.target ?? null,
+        paidOut: paid.toFixed(6),
+        /** The whole story, oldest first — this is the tracking trail. */
+        events: mineDecisions
+          .map((d: { type?: string; reasoning?: string; score?: number; target?: string; timestamp?: number }) => ({
+            type: d.type,
+            reasoning: d.reasoning,
+            score: d.score ?? null,
+            target: d.target ?? null,
+            at: d.timestamp,
+          }))
+          .sort((a: { at?: number }, b: { at?: number }) => Number(a.at ?? 0) - Number(b.at ?? 0)),
+      };
+    });
+
+    return json(res, 200, jobs.sort((a, b) => b.createdAt - a.createdAt));
+  }
+
+  /** Humans who have signed up — the answer to "has anyone actually signed up". */
+  if (req.method === "GET" && url.pathname === "/api/workers") {
+    return json(
+      res,
+      200,
+      store.listWorkers(100).map((w) => ({
+        handle: w.handle,
+        channel: w.channel,
+        skills: w.skills,
+        address: w.walletAddress,
+        mode: w.mode,
+        createdAt: w.createdAt,
+      })),
+    );
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/worker/me") {
+    const id = url.searchParams.get("id");
+    if (!id) return json(res, 400, { error: "id is required" });
+    const worker = store.getWorker(id);
+    if (!worker) return json(res, 404, { error: "not found" });
+    try {
+      /*
+       * `signedInAs` matters more than it looks.
+       *
+       * Somebody with two Google accounts had a "cdev" on each, both managed,
+       * and the dashboard showed a handle and a truncated address and nothing
+       * else. The two were indistinguishable on screen, so signing in with the
+       * wrong one looked exactly like the app had issued a new wallet and lost
+       * the job the other one was hired for. Nothing was lost; nothing on the
+       * page said which identity they were looking at.
+       *
+       * The worker id already grants the right to withdraw, so an id-holder
+       * seeing the email attached to it exposes nothing the id did not.
+       */
+      const { balance } = await workers.balance(id);
+
+      /*
+       * The standing facts about this person, which their board did not have.
+       *
+       * A wallet user's dashboard shows what they have finished and how they
+       * are rated; a managed worker saw a balance and a list. Same marketplace,
+       * and the half of it that most needs a track record — somebody with no
+       * wallet and no history — was the half with nowhere to build one.
+       *
+       * Non-fatal: a rating that cannot be read is left null and the board
+       * simply does not draw it, rather than the page failing over a star.
+       */
+      let rating: { average: number; count: number } | null = null;
+      try {
+        rating = await atelier.getAverageRating(worker.walletAddress as `0x${string}`);
+      } catch {
+        /* leave it null */
+      }
+
+      return json(res, 200, {
+        id: worker.id, handle: worker.handle, address: worker.walletAddress,
+        mode: worker.mode, balance, signedInAs: worker.channelRef ?? null,
+        rating,
+      });
+    } catch {
+      return json(res, 200, {
+        id: worker.id, handle: worker.handle, address: worker.walletAddress,
+        mode: worker.mode, balance: null, signedInAs: worker.channelRef ?? null,
+      });
+    }
+  }
+
+  /**
+   * Everything this worker is involved in — applied to, hired for, finished.
+   *
+   * The bot had this as /mine from the start; the web page did not, and the
+   * omission was worse than a missing convenience. The job board only lists
+   * commissions still at "posted", so the instant someone was HIRED their job
+   * left the board — taking the "I was hired, send work" button with it. A web
+   * user could be hired and then have no way to deliver, while the identical
+   * account on Telegram could. Both doors are supposed to be the same door.
+   */
+  if (req.method === "GET" && url.pathname === "/api/worker/mine") {
+    const id = url.searchParams.get("id");
+    if (!id) return json(res, 400, { error: "id is required" });
+    try {
+      return json(res, 200, await workers.myWork(id));
+    } catch (err) {
+      return json(res, 500, { error: clientError(err) });
+    }
+  }
+
+  /**
+   * A managed worker posting a job of their own.
+   *
+   * The counterpart to /api/worker/apply: same account, same wallet, other side
+   * of the table. Their Circle wallet is the depositor, so the escrow answers to
+   * them — not to Atelier and not to the agent.
+   */
+  if (req.method === "POST" && url.pathname === "/api/worker/commission") {
+    try {
+      const b = JSON.parse(await readBody(req)) as {
+        workerId?: string;
+        instruction?: string;
+        title?: string;
+        budgetUsdc?: number;
+        durationDays?: number;
+        milestones?: { description: string; amount: number }[];
+        handToAutopilot?: boolean;
+        putToWork?: boolean;
+      };
+      if (!b.workerId) return json(res, 400, { error: "workerId is required" });
+      if (!b.title?.trim()) return json(res, 400, { error: "title is required" });
+      if (!Array.isArray(b.milestones) || b.milestones.length === 0) {
+        return json(res, 400, { error: "at least one milestone is required" });
+      }
+      return json(
+        res,
+        200,
+        await workers.commissionAsWorker({
+          workerId: b.workerId,
+          instruction: (b.instruction ?? b.title).trim(),
+          title: b.title,
+          budgetUsdc: Number(b.budgetUsdc ?? 0),
+          durationDays: Number(b.durationDays ?? 7),
+          milestones: b.milestones,
+          handToAutopilot: b.handToAutopilot !== false,
+          putToWork: b.putToWork !== false,
+        }),
+      );
+    } catch (err) {
+      return json(res, 500, { error: clientError(err) });
+    }
+  }
+
+  /** Graduation to self-custody — the bot's /link, which the web could not do. */
+  if (req.method === "POST" && url.pathname === "/api/worker/switch-wallet") {
+    try {
+      const b = JSON.parse(await readBody(req)) as { workerId?: string; address?: string };
+      if (!b.workerId || !b.address) return json(res, 400, { error: "workerId and address are required" });
+      const worker = await workers.switchToOwnWallet(b.workerId, b.address as `0x${string}`);
+      return json(res, 200, { id: worker.id, handle: worker.handle, address: worker.walletAddress, mode: worker.mode });
+    } catch (err) {
+      return json(res, 500, { error: clientError(err) });
+    }
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/worker/apply") {
+    try {
+      const b = JSON.parse(await readBody(req)) as {
+        workerId?: string;
+        escrowId?: string;
+        coverLetter?: string;
+        proposedTimelineDays?: number;
+        portfolioUrl?: string;
+      };
+      if (!b.workerId || !b.escrowId || !b.coverLetter) {
+        return json(res, 400, { error: "workerId, escrowId and coverLetter are required" });
+      }
+      const result = await workers.apply(b.workerId, b.escrowId, b.coverLetter, b.proposedTimelineDays, b.portfolioUrl);
+      return json(res, 200, result);
+    } catch (err) {
+      return json(res, 500, { error: clientError(err) });
+    }
+  }
+
+  /*
+   * The stage a freelancer is about to deliver, and the rubric it faces.
+   *
+   * The delivery box used to ask "What did you deliver?" and say nothing about
+   * which milestone the answer would be filed against or what that milestone
+   * was meant to contain — while on an agent-run job a machine was about to
+   * approve or reject it against written criteria the freelancer had never
+   * been shown.
+   */
+  if (req.method === "GET" && url.pathname === "/api/worker/delivery") {
+    const escrowId = (url.searchParams.get("escrowId") ?? "").trim();
+    if (!/^\d+$/.test(escrowId)) return json(res, 400, { error: "escrowId is required" });
+    try {
+      return json(res, 200, await workers.deliveryTarget(escrowId));
+    } catch (err) {
+      return json(res, 500, { error: clientError(err) });
+    }
+  }
+
+  /*
+   * Authorise one file upload, as the worker.
+   *
+   * The daemon signs rather than carrying the file: multipart in a node:http
+   * handler is a parser nobody should write twice, and the backend already
+   * stores uploads correctly. It hands back a signature the browser sends with
+   * the file, so the backend's rule — a real signature from the real
+   * beneficiary — is enforced exactly as before.
+   */
+  if (req.method === "POST" && url.pathname === "/api/worker/upload-auth") {
+    try {
+      const b = JSON.parse(await readBody(req)) as {
+        workerId?: string;
+        escrowId?: string;
+        milestoneIndex?: number;
+      };
+      if (!b.workerId || !b.escrowId) {
+        return json(res, 400, { error: "workerId and escrowId are required" });
+      }
+      const auth = await workers.signUploadAuth(
+        b.workerId,
+        String(b.escrowId),
+        Number(b.milestoneIndex ?? 0),
+      );
+      return json(res, 200, auth);
+    } catch (err) {
+      /*
+       * Its own fallback, not clientError's.
+       *
+       * That helper ends on "Could not open this commission. The failure has
+       * been logged." — written for the route that opens commissions, and
+       * borrowed by every caller since. Attaching a file to a milestone is not
+       * opening a commission, so the one sentence the freelancer got told them
+       * nothing about what had gone wrong or whether their work was lost.
+       *
+       * A message the person caused (UserFacingError) still passes through
+       * untouched; anything else is ours, and says so.
+       */
+      if (err instanceof workers.UserFacingError) {
+        return json(res, 400, { error: err.message });
+      }
+      console.error("[upload-auth]", err instanceof Error ? err.message : err);
+      return json(res, 502, {
+        error: "Could not authorise the file upload. Your work has not been submitted — try again.",
+      });
+    }
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/worker/submit") {
+    try {
+      const b = JSON.parse(await readBody(req)) as {
+        workerId?: string;
+        escrowId?: string;
+        milestoneIndex?: number;
+        description?: string;
+      };
+      if (!b.workerId || !b.escrowId || !b.description) {
+        return json(res, 400, { error: "workerId, escrowId and description are required" });
+      }
+      // milestoneIndex stays honoured when a caller genuinely means a specific
+      // stage, but is no longer defaulted to 0 — undefined lets the service pick
+      // the stage that actually needs delivering.
+      const result = await workers.submit(b.workerId, b.escrowId, b.description, b.milestoneIndex);
+      return json(res, 200, result);
+    } catch (err) {
+      return json(res, 500, { error: clientError(err) });
+    }
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/worker/withdraw") {
+    try {
+      const b = JSON.parse(await readBody(req)) as { workerId?: string; destination?: string; amountUsdc?: string };
+      if (!b.workerId || !b.destination) return json(res, 400, { error: "workerId and destination are required" });
+      const result = await workers.withdraw(b.workerId, b.destination as `0x${string}`, b.amountUsdc);
+      return json(res, 200, result);
+    } catch (err) {
+      return json(res, 500, { error: clientError(err) });
+    }
+  }
+
+  res.writeHead(404).end("not found");
+});
+
+server.listen(PORT, () => {
+  console.log(`\n  🎨 Atelier daemon listening on http://localhost:${PORT}`);
+  console.log(`     POST /api/hire       (x402-gated — AI agents)`);
+  console.log(`     POST /api/instruct   (human front door)`);
+  console.log(`     GET  /events         (SSE — command center)\n`);
+
+  /*
+   * A DEPENDENCY THAT IS MISSING RATHER THAN BROKEN SAYS NOTHING.
+   *
+   * notifyWeb's post() opens with `if (!config.apiUrl) return false` — so with
+   * API_URL unset every in-app notification the daemon ever sends is dropped on
+   * the floor, silently, while everything else works perfectly. Hires, reviews,
+   * rejections, payments: all fine on-chain, all invisible in the bell.
+   *
+   * It cost an afternoon of looking for a bug in the notification code, which
+   * was correct the whole time. Say it once, at boot, where somebody will see
+   * it.
+   */
+  if (!config.apiUrl) {
+    console.warn(
+      "  ⚠  API_URL is not set — in-app notifications are DISABLED.\n" +
+        "     Everything else runs normally; the bell will simply never fire.\n",
+    );
+  } else {
+    console.log(`     notifications → ${config.apiUrl}\n`);
+  }
+});
+
+// ── Background poller: applications → hire, submissions → review ──────────
+// MilestoneStatus enum ordering assumed 0=pending,1=submitted,2=approved,
+// 3=rejected,4=disputed,5=resolved (matches the app's original type comments) —
+// confirm against the live contract in scripts/e2e-loop.ts before the demo.
+const MILESTONE_SUBMITTED = 1;
+const MILESTONE_APPROVED = 2;
+const MILESTONE_DISPUTED = 4;
+const ESCROW_RELEASED = 2;
+const ESCROW_DISPUTED = 4;
+
+/**
+ * Which milestone reviews have actually COMPLETED.
+ *
+ * This was an in-memory Set marked BEFORE the review ran — the identical
+ * mistake already fixed for application scoring below, still live on the path
+ * that decides whether someone gets paid. A review that threw (a rate limit, a
+ * timeout) had its key recorded anyway, so the submission was never looked at
+ * again: the freelancer delivered real work, the agent hit a 429 once,
+ * and the job sat "active" forever with the money locked. On a tight token
+ * budget that is not an edge case, it is the expected path.
+ *
+ * Now: persisted like every other poller marker, written only on success, and
+ * attempt-bounded so a genuinely poisonous submission (one too large for the
+ * model, say) gives up instead of retrying every 15 seconds forever.
+ */
+const reviewDoneKey = (escrowId: string, index: number, submittedAt: string) => `milestone_reviewed:${escrowId}:${index}:${submittedAt}`;
+const reviewTriesKey = (escrowId: string, index: number, submittedAt: string) => `milestone_review_tries:${escrowId}:${index}:${submittedAt}`;
+const MAX_REVIEW_ATTEMPTS = 5;
+
+// Last application count Atelier has actually SCORED for a given job. Without this,
+// a job with zero (or unchanged) applicants gets re-queried and re-scored every
+// 15s forever — burning LLM calls for nothing and flooding the command center
+// with the same "no suitable applicant" notification on a loop. Only re-run
+// reviewApplications when the applicant count has actually grown since last check.
+//
+// PERSISTED, not a Map: as an in-memory Map this survived only until the next
+// restart, so every redeploy re-scored every open job's applicants from scratch.
+// Escrow #31 ended up with 27 decision rows for 3 applicants — the same verdicts
+// repeated — and each repeat was a real LLM call on a job that was already done.
+const scoredCountKey = (escrowId: string) => `scored_applications:${escrowId}`;
+
+/**
+ * Rate the freelancer on-chain once a job finishes.
+ *
+ * This is what makes Atelier's reputation REAL rather than derived. Anyone can
+ * compute a reputation score from their own database and call it behaviour-based;
+ * Atelier's submitRating puts it on the contract, where it is readable by
+ * anyone — including Atelier's own dApp and any future client — and cannot be
+ * quietly recalculated to flatter us.
+ *
+ * The score isn't invented: it comes from the review scores the agent
+ * actually produced for this job's milestones, mapped from 0–100 onto the
+ * contract's 1–5. A job that needed two revisions genuinely earns a lower rating
+ * than one accepted first time, and that difference is now permanent and public.
+ *
+ * Never fatal: the money is already paid by this point, and failing to record a
+ * rating must not look like a failed payout.
+ */
+async function rateFreelancer(escrowId: string, brief: { milestones?: unknown[] }): Promise<void> {
+  try {
+    /*
+     * WHO WAS HIRED IS A CHAIN FACT.
+     *
+     * This looked for the agent's own applicant_accepted decision, so a job
+     * the CLIENT hired for by hand produced no rating at all — the freelancer
+     * did the work, got paid, and walked away with nothing on their record.
+     * The same reading cost a freelancer their whole board a few commits ago;
+     * it is the escrow that knows who is on it.
+     */
+    const esc = (await atelier.getEscrow(BigInt(escrowId))) as { beneficiary?: string };
+    const freelancer = esc.beneficiary;
+    if (!freelancer || /^0x0+$/i.test(freelancer)) return;
+
+    const reviews = store
+      .listDecisions(300)
+      .filter((d: { task_id?: string; type?: string }) => d.task_id === escrowId && (d.type === "work_approved" || d.type === "work_rejected"));
+    const rejections = reviews.filter((r: { type?: string }) => r.type === "work_rejected").length;
+    const milestones = Array.isArray(brief?.milestones) ? brief.milestones.length : 1;
+
+    // Five stars for clean acceptance, one star off per revision round needed.
+    const score = Math.max(1, 5 - rejections);
+    const review =
+      rejections === 0
+        ? `All ${milestones} milestone(s) accepted first time against the acceptance brief.`
+        : `Completed after ${rejections} revision round(s); all ${milestones} milestone(s) ultimately accepted.`;
+
+    const txHash = await atelier.submitRating(BigInt(escrowId), score, review);
+    console.log(`[rating] ${freelancer} rated ${score}/5 for escrow ${escrowId} (${txHash})`);
+    broadcast({
+      type: "task_completed",
+      message: `On-chain rating recorded: ${score}/5 — ${review}`,
+      escrowId,
+      txHash,
+      timestamp: Date.now(),
+    });
+  } catch (err) {
+    console.warn(`[rating] could not record rating for escrow ${escrowId} (non-fatal):`, err instanceof Error ? err.message : err);
+  }
+}
+
+/** Treasury balance as a number, for measuring what a cancellation actually returned. */
+async function treasuryBalance(): Promise<number> {
+  const pub = createPublicClient({ chain: arcTestnet, transport: viemHttp(rpcUrl) });
+  const wei = await pub.getBalance({ address: config.circleWalletAddress as `0x${string}` });
+  return Number(formatEther(wei));
+}
+
+/** True while every task in a pass is failing — i.e. the subgraph is unreachable. */
+let pollerDegraded = false;
+/** True once the LLM has reported a rate limit, so the warning is sent once, not every 15s. */
+let llmExhausted = false;
+
+/**
+ * Wall-clock time until which LLM-backed poller work is skipped.
+ *
+ * Without this, a rate limit turns into a self-inflicted denial of service: the
+ * poller wakes every 15s, fires another ~5k-token scoring request at an API
+ * that just said no, and burns through the per-minute allowance as well as the
+ * daily one — so the budget never gets a chance to recover and the logs fill
+ * with the same 429. Observed live on production.
+ *
+ * Groq tells us exactly how long to wait ("Please try again in 29.34s"), so we
+ * honour that when present and fall back to a conservative default when not.
+ */
+let llmCooldownUntil = 0;
+
+function noteLlmRateLimit(message: string): void {
+  const retryIn = message.match(/try again in ([\d.]+)s/i);
+  const seconds = retryIn?.[1] ? Number(retryIn[1]) : NaN;
+  // A per-minute limit clears in seconds; an exhausted DAILY budget does not,
+  // and retrying it every minute all day is pointless noise.
+  const isDaily = /per day|TPD|daily/i.test(message);
+  const waitMs = Number.isFinite(seconds) && !isDaily ? Math.max(seconds * 1000, 5_000) : isDaily ? 15 * 60_000 : 60_000;
+  llmCooldownUntil = Date.now() + waitMs;
+  // Share it, so the people waiting on a decision can be told rather than left
+  // watching silence.
+  setLlmPausedUntil(llmCooldownUntil);
+  console.warn(`[poller] LLM rate-limited — pausing LLM work for ${Math.round(waitMs / 1000)}s`);
+}
+
+/**
+ * Sweep jobs stranded mid-brief.
+ *
+ * runHireFlow marks its own failures, but only when it catches one — a daemon
+ * killed or redeployed between "insert the row" and "open the escrow" leaves a
+ * row in `briefing` that nothing will ever move on. It then counts as in-progress
+ * forever and quietly overstates how much live work there is.
+ *
+ * This was originally a one-time repair, which was the wrong shape: it fixed the
+ * rows that existed that day and did nothing about the next one, and production
+ * grew a fresh stranded row within hours. A recurring condition needs a recurring
+ * sweep.
+ */
+function sweepStrandedBriefs(): void {
+  const cutoff = Date.now() - 10 * 60_000;
+  for (const t of store.listTasks(100)) {
+    if (t.status === "briefing" && !t.escrowId && t.createdAt < cutoff) {
+      store.updateTaskStatus(t.id, "failed");
+      console.log(`[poller] marked stranded brief ${t.id} as failed (no escrow after 10 minutes)`);
+    }
+  }
+}
+
+/**
+ * Return the budget on commissions nobody ever qualified for.
+ *
+ * Without this a job that attracts only weak applicants stays open forever with
+ * the money locked: production had one sitting at 66 hours, scored fifteen times
+ * as new applicants trickled in, none reaching the bar. Nothing was wrong, and
+ * nothing would ever happen.
+ *
+ * Tied to the client's own deadline rather than an arbitrary timer — once the
+ * duration they asked for has passed, the work cannot be delivered on time
+ * anyway, so holding their money serves nobody. Same principle as the refund
+ * path: money nobody earned goes back.
+ *
+ * Deliberately only touches jobs still at "posted". The moment a freelancer is
+ * hired their claim on the escrow is exactly what makes Atelier worth trusting.
+ */
+/**
+ * How much of an escrow is genuinely still at stake, in USDC.
+ *
+ * NOT `totalAmount`. That field is the ORIGINAL budget and is never decremented
+ * — #58 completed and paid its full $10 and still reports totalAmount $10.00.
+ * Gating on it would have escalated finished, fully-paid commissions to a human
+ * arbiter, which is the same mistake in a new costume: reading a field that
+ * looks like an answer to a question it does not answer.
+ *
+ * Milestone status is the truth. Anything not APPROVED still holds its value.
+ */
+async function unresolvedValue(escrowId: string): Promise<number> {
+  try {
+    const ms = (await atelier.getMilestones(BigInt(escrowId))) as { amount?: bigint; status?: number | bigint }[];
+    if (!Array.isArray(ms) || !ms.length) return 0;
+    return ms
+      .filter((m) => Number(m.status ?? 0) !== MILESTONE_APPROVED)
+      .reduce((sum, m) => sum + Number(m.amount ?? 0n) / 1e6, 0);
+  } catch {
+    return 0; // cannot read it, do not act on it
+  }
+}
+
+/** Last cancel attempt per escrow, so a permanently-blocked one is not retried every 15s. */
+const cancelAttemptedAt = new Map<string, number>();
+const CANCEL_RETRY_MS = 30 * 60 * 1000;
+
+async function sweepExpiredCommissions(): Promise<void> {
+  for (const task of store.listTasks(200)) {
+    if (!task.escrowId || !task.briefJson) continue;
+
+    /**
+     * Ask the CHAIN who was hired, not our own status column.
+     *
+     * This used to require `task.status === "posted"`, and that one filter cost
+     * real money. Rows drift — a job that was never hired sat as "active" in the
+     * database, so the sweep skipped it, the deadline passed, the contract moved
+     * it to EXPIRED, and by the time anything noticed, cancelJob no longer
+     * worked. Twelve un-hired commissions reached that state holding $79.60.
+     *
+     * cancelJob is only available while nobody is assigned (the contract says
+     * CannotCancelAssignedJob otherwise) and before expiry closes it off. That
+     * is a narrow window, and hitting it reliably means acting on what the
+     * contract says right now rather than on a status we may have mislabelled.
+     */
+    let brief: { durationDays?: number; title?: string };
+    try {
+      brief = JSON.parse(task.briefJson);
+    } catch {
+      continue;
+    }
+    const days = Number(brief.durationDays ?? 0);
+    if (!days) continue;
+    if (Date.now() < task.createdAt + days * 86_400_000) continue;
+
+    const lastTry = cancelAttemptedAt.get(task.escrowId) ?? 0;
+    if (Date.now() - lastTry < CANCEL_RETRY_MS) continue;
+
+    // The chain is the authority on both questions: is there money, and is
+    // anyone assigned to it.
+    let onChain: { beneficiary?: string; totalAmount?: bigint };
+    try {
+      onChain = (await atelier.getEscrow(BigInt(task.escrowId))) as { beneficiary?: string; totalAmount?: bigint };
+    } catch {
+      continue;
+    }
+    // Someone is assigned — cancelling is not ours to do. That path is
+    // sweepOverdueCommissions, which escalates to a human instead.
+    if (!/^0x0{40}$/i.test(onChain.beneficiary ?? "")) continue;
+    // Milestone status, never totalAmount — see unresolvedValue().
+    if ((await unresolvedValue(task.escrowId)) <= 0.000001) continue;
+
+    cancelAttemptedAt.set(task.escrowId, Date.now());
+
+    try {
+      const txHash = await atelier.cancelJob(BigInt(task.escrowId));
+      store.updateTaskStatus(task.id, "cancelled", task.escrowId);
+      console.log(`[poller] expired unfilled commission ${task.escrowId} cancelled, budget returned (${txHash})`);
+      broadcast({
+        type: "task_completed",
+        message: `"${brief.title ?? "Commission"}" reached its deadline without a suitable applicant — the budget has been returned in full.`,
+        escrowId: task.escrowId,
+        txHash,
+        timestamp: Date.now(),
+      });
+    } catch (err) {
+      console.warn(`[poller] could not cancel expired ${task.escrowId}:`, err instanceof Error ? err.message : err);
+    }
+  }
+}
+
+/**
+ * Reclaim escrows that were abandoned mid-job.
+ *
+ * sweepExpiredCommissions only touches commissions still at "posted" — nobody
+ * hired, nothing at stake. That was the right rule and it left a real hole:
+ * once a freelancer IS hired and then walks away, or an arbiter settles one
+ * milestone of two and the rest is never delivered, Atelier correctly
+ * refuses cancelJob (their claim on the escrow is the whole product) and
+ * nothing else ever ran.
+ *
+ * Escrow #56 is the live example: $2.50 for an undelivered milestone, locked,
+ * with no code path anywhere that would ever release it. The contract has the
+ * answer — emergencyRefundAfterDeadline, callable by the depositor once the
+ * deadline plus a 30-day grace has passed — and it was exported here and never
+ * called. So the honest answer to "what happens on the 6th of October" was
+ * "nothing, forever". Now it is swept.
+ *
+ * The pre-filter is deliberately local. Reading every escrow from the chain on
+ * a 15-second poll would be enormous; a job cannot possibly be eligible before
+ * its own duration plus the grace period has elapsed, and that is answerable
+ * from the row itself at zero cost.
+ */
+const EMERGENCY_GRACE_DAYS = 30;
+
+/**
+ * Last reclaim attempt per escrow, so a locked one is not retried every 15s.
+ *
+ * The sweep now asks the contract instead of pre-judging with a status enum,
+ * which is correct — but it means an escrow that is genuinely not yet
+ * reclaimable reverts on every pass. Once an hour is plenty for something whose
+ * unlock date is measured in weeks, and it keeps a real failure visible in the
+ * log instead of buried under thousands of expected ones.
+ */
+const reclaimAttemptedAt = new Map<string, number>();
+const RECLAIM_RETRY_MS = 60 * 60 * 1000;
+
+async function sweepStrandedEscrows(): Promise<void> {
+  for (const task of store.listTasks(200)) {
+    if (!task.escrowId) continue;
+
+    /**
+     * Do NOT filter on our own status, and do NOT filter on the chain's.
+     *
+     * Both were wrong, and an audit found $32 that would have been lost to it:
+     *
+     *   #26  chain PENDING (hired, never started)   $1.00   db "active"
+     *   #51  chain PENDING (hired, never started)   $0.50   db "active"
+     *   #61  chain EXPIRED, nobody ever hired       $30.00  db "cancelled"
+     *
+     * The old code skipped anything the DB called cancelled — #61 was recorded
+     * cancelled while the contract still held thirty dollars — and skipped any
+     * chain status other than ACTIVE, which excluded both PENDING and EXPIRED.
+     * All three were invisible to every sweep, permanently.
+     *
+     * The only authority on whether money can be reclaimed is the contract. It
+     * reverts harmlessly when the answer is no, so ASK IT rather than
+     * pre-judging with a status enum we have twice mapped incorrectly.
+     */
+    // Cheap local gate: nothing can possibly be eligible before its own grace
+    // period has elapsed, and this costs no RPC. Deliberately generous — it
+    // ignores durationDays, which the old gate required and which is missing on
+    // some rows.
+    if (Date.now() < task.createdAt + EMERGENCY_GRACE_DAYS * 86_400_000) continue;
+
+    let brief: { title?: string } = {};
+    try {
+      brief = task.briefJson ? JSON.parse(task.briefJson) : {};
+    } catch {
+      /* a job with an unreadable brief still has money worth reclaiming */
+    }
+
+    try {
+      const escrow = (await atelier.getEscrow(BigInt(task.escrowId))) as {
+        totalAmount?: bigint;
+        deadline?: bigint;
+        status?: number | bigint;
+      };
+      // The one thing worth pre-checking: no money, nothing to do.
+      if (!escrow?.totalAmount || escrow.totalAmount <= 0n) continue;
+      const opensAt = Number(escrow.deadline ?? 0n) + EMERGENCY_GRACE_DAYS * 86_400;
+      if (Math.floor(Date.now() / 1000) < opensAt) continue;
+
+      const lastTry = reclaimAttemptedAt.get(task.escrowId) ?? 0;
+      if (Date.now() - lastTry < RECLAIM_RETRY_MS) continue;
+      reclaimAttemptedAt.set(task.escrowId, Date.now());
+
+      // Measure what actually came back rather than assuming the face value —
+      // same reason as the cancellation path.
+      const before = await treasuryBalance();
+      const txHash = await atelier.emergencyRefundAfterDeadline(BigInt(task.escrowId));
+      const recovered = Math.max(0, (await treasuryBalance()) - before);
+
+      store.updateTaskStatus(task.id, "refunded", task.escrowId);
+      if (task.clientAddress && recovered > 0.000001) {
+        store.recordTreasuryEntry({
+          id: randomUUID(),
+          party: task.clientAddress,
+          direction: "refund",
+          amountUsdc: recovered.toFixed(6),
+          txHash: `emergency-refund:${task.escrowId}`,
+        });
+      }
+      console.log(`[poller] stranded escrow ${task.escrowId} reclaimed, $${recovered.toFixed(2)} returned (${txHash})`);
+
+      const message = `"${brief.title ?? "Commission"}" was never finished. Its remaining $${recovered.toFixed(2)} has been released from escrow and is back in your Atelier balance.`;
+      broadcast({ type: "task_completed", message, escrowId: task.escrowId, txHash, timestamp: Date.now() });
+      void telegram.notifyClientForEscrow(task.escrowId, `💸 <b>Escrow released.</b>\n\n${telegram.esc(message)}`);
+    } catch (err) {
+      // Reverts are expected — the contract is the authority on when a reclaim
+      // is allowed. Logged at most hourly per escrow thanks to the cooldown.
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[poller] escrow ${task.escrowId} not yet reclaimable: ${msg.split("\n")[0]}`);
+    }
+  }
+}
+
+/**
+ * Make our status follow the chain, not the other way round.
+ *
+ * An audit found rows that disagreed with the contract in ways that mislead
+ * everyone reading them:
+ *
+ *   #56  db "completed"  chain ACTIVE, $3.75 still escrowed, milestone 2 never
+ *        delivered — the client's page said finished while money sat locked
+ *   #61  db "cancelled"  chain EXPIRED holding $30 — recorded as returned when
+ *        nothing had been returned
+ *
+ * Both came from writing a status at the moment we *asked* for something rather
+ * than when the chain agreed it happened. This corrects the record on every
+ * pass. It never moves money — only what we claim about it.
+ */
+const CHAIN_STATUS_TO_TASK: Record<number, string> = {
+  2: "completed",   // COMPLETED
+  3: "disputed",    // DISPUTED
+  4: "disputed",
+  5: "refunded",    // REFUNDED
+};
+
+async function reconcileTaskStatuses(): Promise<void> {
+  for (const task of store.listTasks(200)) {
+    if (!task.escrowId) continue;
+    if (task.status === "briefing" || task.status === "failed") continue;
+    try {
+      const e = (await atelier.getEscrow(BigInt(task.escrowId))) as { totalAmount?: bigint; status?: number | bigint };
+      if (!e || e.status === undefined) continue;
+      const chain = Number(e.status);
+      const held = Number(e.totalAmount ?? 0n) / 1e6;
+
+      // A commission is only "completed" or "cancelled" when the escrow is
+      // actually empty. While it still holds money, something is outstanding.
+      let want = CHAIN_STATUS_TO_TASK[chain];
+      if (!want && held > 0.000001 && (task.status === "completed" || task.status === "cancelled")) {
+        want = "active";
+      }
+      if (want && want !== task.status) {
+        store.updateTaskStatus(task.id, want, task.escrowId);
+        console.log(`[reconcile] escrow ${task.escrowId}: "${task.status}" → "${want}" (chain status ${chain}, $${held.toFixed(2)} held)`);
+      }
+    } catch {
+      // A chain read failing is not evidence about status. Leave the row alone.
+    }
+  }
+}
+
+/**
+ * Escalate commissions that have run past their delivery window.
+ *
+ * "Overdue" was a label and nothing else. Nine commissions holding $79.60 sat
+ * past their deadlines with no route to resolution: cancelJob reverts once a
+ * freelancer has a claim, and emergencyRefundAfterDeadline needs another thirty
+ * days. Money the client could not get back and nobody was working for.
+ *
+ * Atelier has raiseOverdueDispute for exactly this. It does NOT refund — it
+ * hands the decision to a human arbiter, which is the right behaviour: a
+ * freelancer who is late but delivered something should not be ruled against
+ * automatically, and one who delivered nothing should not hold the money
+ * hostage for a month.
+ *
+ * The grace period exists so a freelancer a few hours late is not disputed out
+ * of the job. They are warned first, and only escalated if the grace elapses.
+ */
+const OVERDUE_GRACE_DAYS = Number(process.env.OVERDUE_GRACE_DAYS ?? 2);
+const overdueHandled = new Set<string>();
+
+async function sweepOverdueCommissions(): Promise<void> {
+  const nowSec = Math.floor(Date.now() / 1000);
+
+  for (const task of store.listTasks(200)) {
+    if (!task.escrowId || overdueHandled.has(task.escrowId)) continue;
+    if (task.status === "cancelled" || task.status === "refunded" || task.status === "disputed") continue;
+
+    try {
+      const escrow = (await atelier.getEscrow(BigInt(task.escrowId))) as {
+        totalAmount?: bigint;
+        deadline?: bigint;
+        beneficiary?: string;
+      };
+      // No money at stake means nothing to argue about — and "at stake" is a
+      // milestone question, not a totalAmount one. See unresolvedValue().
+      const atStake = await unresolvedValue(task.escrowId);
+      if (atStake <= 0.000001) continue;
+
+      /**
+       * NEVER dispute a job with no freelancer.
+       *
+       * A dispute is a conflict between two parties. Raising one against nobody
+       * is meaningless on-chain and it reads terribly on a public ledger — an
+       * earlier version of this sweep escalated twelve un-hired commissions and
+       * turned a tidy board into a wall of disputes with no counterparty.
+       *
+       * An un-hired job is a CANCELLATION, and that is
+       * sweepExpiredCommissions' job. This one only handles the real case: a
+       * freelancer was hired, took the claim, and did not deliver.
+       */
+      if (/^0x0{40}$/i.test(escrow.beneficiary ?? "")) continue;
+
+      const deadline = Number(escrow.deadline ?? 0n);
+      if (!deadline || nowSec < deadline + OVERDUE_GRACE_DAYS * 86_400) continue;
+
+      const brief = task.briefJson ? JSON.parse(task.briefJson) : {};
+      const daysLate = Math.floor((nowSec - deadline) / 86_400);
+      const held = atStake;
+
+      const txHash = await atelier.raiseOverdueDispute(
+        BigInt(task.escrowId),
+        `Delivery window passed ${daysLate} day(s) ago with $${held.toFixed(2)} still escrowed. ` +
+          `Escalated automatically for a human arbiter to decide how the remaining balance should be settled.`,
+      );
+
+      overdueHandled.add(task.escrowId);
+      store.updateTaskStatus(task.id, "disputed", task.escrowId);
+      store.recordDecision({
+        id: `overdue-dispute:${task.escrowId}`,
+        taskId: task.escrowId,
+        type: "escalated",
+        reasoning:
+          `This commission passed its ${brief.durationDays ?? "?"}-day delivery window ${daysLate} day(s) ago with ` +
+          `$${held.toFixed(2)} still in escrow. Atelier escalated it to a human arbiter rather than leaving the money ` +
+          `locked — it cannot refund on its own, and waiting for the emergency window would take another month.`,
+        target: store.hiredFor(task.escrowId) ?? undefined,
+        timestamp: Date.now(),
+      });
+
+      console.log(`[poller] overdue commission ${task.escrowId} escalated after ${daysLate}d (${txHash})`);
+
+      void telegram.notifyWorkerForEscrow(
+        task.escrowId,
+        `⏰ <b>This job passed its deadline.</b>\n\nIt has gone to a human arbiter to decide how the $${held.toFixed(2)} is settled. ` +
+          `If you have delivered work, say so — the arbiter reads the whole trail.\n\n${config.publicAppUrl}/jobs/${task.escrowId}`,
+      );
+      void telegram.notifyClientForEscrow(
+        task.escrowId,
+        `⏰ <b>Your commission ran past its deadline.</b>\n\n${telegram.esc(brief.title ?? "It")} was due ${daysLate} day(s) ago with ` +
+          `$${held.toFixed(2)} still escrowed, so it has gone to a human arbiter. Your money stays locked until they rule — ` +
+          `Atelier cannot release or reclaim it on its own.\n\n${config.publicAppUrl}/jobs/${task.escrowId}`,
+      );
+    } catch (err) {
+      // Expected when the contract does not consider it overdue yet.
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[poller] could not escalate overdue ${task.escrowId}: ${msg.split("\n")[0]}`);
+    }
+  }
+}
+
+async function pollOnce() {
+  sweepStrandedBriefs();
+  /*
+   * HOUSEKEEPING RUNS SLOWER THAN THE WORK.
+   *
+   * Every pass used to run four chain-wide sweeps, adoption, and reconciliation
+   * before it looked at a single task — four times a minute. On a public RPC
+   * that is simply more requests than it will serve, and the symptom was not
+   * slowness: the sweeps were REFUSED, so delegated jobs were never adopted and
+   * a client's hand-over did nothing at all while the log filled with "Request
+   * exceeds defined limit".
+   *
+   * None of these need to be quick. An expired commission does not care about
+   * fifteen seconds versus a minute, and neither does a stranded escrow. What
+   * has to stay responsive is the task loop below — reviewing a submission,
+   * hiring when a window closes — and starving it to re-sweep the whole chain
+   * was the wrong trade.
+   *
+   * Adoption sits in between: a client who hands a job over is watching, so it
+   * runs on the half-minute rather than the minute.
+   */
+  sweepTick++;
+  const everyMinute = sweepTick % 4 === 0;
+  const everyHalfMinute = sweepTick % 2 === 0;
+
+  if (everyMinute) {
+    await sweepExpiredCommissions();
+    await sweepStrandedEscrows();
+    await sweepOverdueCommissions();
+    await reconcileTaskStatuses();
+  }
+  /*
+   * Jobs handed to us in the app arrive here, not through /api/instruct.
+   * Without this the delegation was real on-chain and completely inert: the
+   * poller below iterates its own task table, so a client watched an agent
+   * that had never heard of their job.
+   */
+  if (everyHalfMinute) {
+    await adoptDelegatedJobs().catch((err) =>
+      console.error("[adopt] sweep failed:", err instanceof Error ? err.message : err),
+    );
+  }
+  /*
+   * Deliberately NOT gated on the subgraph any more.
+   *
+   * This returned early whenever GRAPH_URL was unset, which meant the entire
+   * hire loop -- scoring, hiring, review, payment -- was silently disabled
+   * until an indexer had been deployed. Nothing was logged, because nothing
+   * was attempted: the daemon looked healthy and jobs just never moved.
+   *
+   * Every query below concerns a single escrow, and graphQuery answers those
+   * from the chain when there is no subgraph. So the poller runs either way,
+   * and the subgraph is what makes it fast rather than what makes it work.
+   */
+  // Everything the poller does downstream costs an LLM call. While the model is
+  // rate-limited there is nothing useful to do, and trying anyway is what kept
+  // the budget pinned at zero.
+  if (Date.now() < llmCooldownUntil) return;
+  // Filtered AFTER the fetch, so the window has to be wide enough to still
+  // contain live work once finished jobs pile up in front of it. At 50 a busy
+  // week would have pushed a genuinely active job out of the poller's sight and
+  // frozen it — nothing would advance it, and nothing would say why.
+  // "disputed" is included on purpose. It used to be terminal: once escalated,
+  // the poller never looked at the job again, so when a human arbiter actually
+  // RESOLVED it nothing noticed. The page kept saying "with a human arbiter"
+  // forever, neither party was told the outcome, and the client's share of the
+  // split never came back to their balance. Escalation is a handover, not an
+  // ending — Atelier still owes both sides the result.
+  const tasks = store
+    .listTasks(300)
+    .filter((t) => t.escrowId && (t.status === "posted" || t.status === "active" || t.status === "disputed"));
+  let pollFailures = 0;
+
+  for (const task of tasks) {
+    if (!task.escrowId || !task.briefJson) continue;
+    const brief = JSON.parse(task.briefJson);
+    const escrowId = BigInt(task.escrowId);
+    /** Attempt counter of a review in progress, so a rate limit can give it back. */
+    let inFlightReview: string | null = null;
+
+    try {
+      if (task.status === "posted") {
+        const appsResult = await graphQuery<{ escrow: { applications: unknown[] } | null }>(GET_JOB_APPLICATIONS, {
+          escrowId: task.escrowId,
+        });
+        const currentCount = appsResult.escrow?.applications.length ?? 0;
+        const lastScored = store.getPollerInt(scoredCountKey(task.escrowId)) ?? -1;
+        if (currentCount === 0 || currentCount <= lastScored) continue; // nothing new to score
+
+        // Give people a chance to apply before judging.
+        //
+        // This used to score the instant the first application arrived, and hire
+        // anyone clearing the bar — so the job went to whoever refreshed fastest,
+        // and the "one comparative call ranking applicants against each other"
+        // was ranking a pool of one. That is not a marketplace, it is a race.
+        //
+        // The window is per-job so a client can ask for longer ("give people a
+        // day"), and it only gates the FIRST judgement: once a job has been
+        // scored, a later applicant is still picked up on the next pass, because
+        // the alternative is telling someone who applied in good time that they
+        // arrived too late to be read at all.
+        const windowMinutes = brief?.applicationWindowMinutes ?? config.applicationWindowMinutes;
+        const opensAt = task.createdAt + windowMinutes * 60_000;
+        if (lastScored < 0 && Date.now() < opensAt) {
+          continue; // still open for applications
+        }
+
+        // Mark AFTER the pass succeeds, never before. Recording the count first
+        // meant a single transient LLM failure — a rate limit, a timeout — burned
+        // the marker anyway and the job was skipped forever: escrow #32 took a
+        // 429 on its only scoring attempt and would never have been looked at
+        // again. The dedup marker exists to prevent repeated SUCCESSFUL work, so
+        // it has to record success, not intent.
+        const winner = await agent.reviewApplications(escrowId, brief);
+        store.setPollerInt(scoredCountKey(task.escrowId), currentCount);
+        if (winner) store.updateTaskStatus(task.id, "active", task.escrowId);
+        continue;
+      }
+
+      if (task.status === "disputed") {
+        await settleResolvedDispute(task, brief);
+        continue;
+      }
+
+      if (task.status === "active") {
+        const result = await graphQuery<{ escrow: GQLEscrow | null }>(GET_JOB_BY_ID, { escrowId: task.escrowId });
+        const milestones = result.escrow?.milestones ?? [];
+        for (const [index, m] of milestones.entries()) {
+          if (m.status !== MILESTONE_SUBMITTED) continue;
+          // Keyed on submittedAt, not just index — a rejected milestone gets
+          // resubmitted at the SAME index with a NEW submittedAt. Keying on index
+          // alone meant a resubmission after rejection was permanently skipped:
+          // the first review's key stayed in the set forever, so the revision the
+          // freelancer actually sent in response to feedback never got looked at.
+          // Caught by actually driving a real reject -> resubmit cycle end to end.
+          const submittedAt = String(m.submittedAt ?? "");
+          if (store.getPollerInt(reviewDoneKey(task.escrowId, index, submittedAt))) continue;
+
+          const tries = store.getPollerInt(reviewTriesKey(task.escrowId, index, submittedAt)) ?? 0;
+          if (tries >= MAX_REVIEW_ATTEMPTS) {
+            // Out of retries. Say so loudly — someone's delivered work is sitting
+            // here unpaid, and silence is how that stays invisible.
+            if (tries === MAX_REVIEW_ATTEMPTS) {
+              store.setPollerInt(reviewTriesKey(task.escrowId, index, submittedAt), tries + 1);
+              console.error(`[poller] milestone ${task.escrowId}:${index} could not be reviewed after ${MAX_REVIEW_ATTEMPTS} attempts — needs a human`);
+              broadcast({
+                type: "escalated_to_human",
+                message: "A submission could not be reviewed automatically after repeated attempts and needs a human look. The escrowed funds are untouched.",
+                escrowId: task.escrowId,
+                timestamp: Date.now(),
+              });
+            }
+            continue;
+          }
+
+          // Count the attempt BEFORE the call so a submission that reliably
+          // breaks the model cannot loop forever; record DONE only after it
+          // genuinely succeeds so a transient failure is retried.
+          store.setPollerInt(reviewTriesKey(task.escrowId, index, submittedAt), tries + 1);
+          inFlightReview = reviewTriesKey(task.escrowId, index, submittedAt);
+          await agent.reviewMilestone(escrowId, BigInt(index), m.description, "", brief, m.description);
+          inFlightReview = null;
+          store.setPollerInt(reviewDoneKey(task.escrowId, index, submittedAt), 1);
+        }
+
+        // Re-fetch rather than trust the pre-review snapshot above, since a
+        // review in the loop above may have just approved and paid a milestone.
+        const refreshed = await graphQuery<{ escrow: GQLEscrow | null }>(GET_JOB_BY_ID, { escrowId: task.escrowId });
+        const finalMilestones = refreshed.escrow?.milestones ?? [];
+
+        // A disputed job is not "active" — it's out of the agent's hands and
+        // waiting on a human arbiter. Surfacing this matters: escalation is the
+        // answer to "what if the AI wrongly rejects good work", and it was
+        // invisible here. Escrow #28 sat on-chain as status 4 for a day while
+        // the command center still displayed it as merrily active.
+        const disputed =
+          refreshed.escrow?.status === ESCROW_DISPUTED || finalMilestones.some((m) => m.status === MILESTONE_DISPUTED);
+
+        // Completion is derived from the MILESTONES, not from escrow.status.
+        // The old check was `escrow.status === 2` (Released), which never fires:
+        // Atelier leaves an escrow at status 1 even after every milestone is
+        // approved and the money is out the door. Escrow #19 had all milestones
+        // approved and $4 genuinely paid to a human, and still showed as active —
+        // so the dashboard reported "0 completed, 0% completion rate" forever,
+        // which is both the worst possible number to show and simply untrue.
+        // Count approved milestones against the BRIEF's milestone count, not
+        // against the list the subgraph returns. The subgraph only indexes
+        // milestones that have been interacted with, so a 3-milestone job whose
+        // first milestone was just approved comes back as a single-element list
+        // — and `every(approved)` over that is trivially true. Escrow #29 was
+        // marked complete after $0.50 of its $1 had been paid, with two
+        // milestones still outstanding.
+        const expectedMilestones = Array.isArray(brief?.milestones) ? brief.milestones.length : 0;
+        const approvedCount = finalMilestones.filter((m) => m.status === MILESTONE_APPROVED).length;
+        const allApproved = expectedMilestones > 0 && approvedCount >= expectedMilestones;
+
+        if (disputed) {
+          store.updateTaskStatus(task.id, "disputed", task.escrowId);
+          broadcast({
+            type: "escalated_to_human",
+            message: "Job escalated — a human arbiter now holds this milestone via Atelier's dispute system.",
+            escrowId: task.escrowId,
+            timestamp: Date.now(),
+          });
+        } else if (allApproved || refreshed.escrow?.status === ESCROW_RELEASED) {
+          store.updateTaskStatus(task.id, "completed", task.escrowId);
+          broadcast({ type: "task_completed", message: "Job completed — all milestones approved and paid.", escrowId: task.escrowId, timestamp: Date.now() });
+          void rateFreelancer(task.escrowId, brief);
+        }
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`[poller] task ${task.id} failed:`, msg);
+      pollFailures++;
+
+      // An exhausted LLM budget stops hiring dead while everything else looks
+      // perfectly healthy — the API answers, the chain is fine, jobs just never
+      // move. Announce it once. Discovered the hard way: the daily token budget
+      // ran out and the only visible symptom was a schema-validation error.
+      // 413 means the request was too big, not that we asked too often — the
+      // message still says "rate_limit_exceeded", but pausing and retrying an
+      // oversized prompt fails identically forever. It is a bug to fix, not a
+      // wait to serve.
+      if (/413|too large/i.test(msg)) {
+        console.error("[poller] prompt too large for the model — this will not resolve by waiting");
+      } else if (isLlmRateLimit(msg)) {
+        // Being rate-limited says nothing about the submission, so it must not
+        // spend one of its five chances. Otherwise a quiet afternoon of 429s
+        // exhausts a perfectly good milestone's retries and strands the payout.
+        if (inFlightReview) {
+          const spent = store.getPollerInt(inFlightReview) ?? 1;
+          store.setPollerInt(inFlightReview, Math.max(0, spent - 1));
+        }
+        noteLlmRateLimit(msg);
+        if (!llmExhausted) {
+          llmExhausted = true;
+          broadcast({
+            type: "error",
+            message: "The agent's language model has hit its rate limit — hiring and reviews are paused until it resets. Escrowed funds are unaffected.",
+            timestamp: Date.now(),
+          });
+        }
+        break; // no point walking the remaining tasks this pass
+      } else if (llmExhausted) {
+        llmExhausted = false;
+      }
+    }
+  }
+
+  // The poller is how every job advances. If the subgraph is unreachable it
+  // fails silently per-task forever: the daemon stays healthy, the API keeps
+  // answering, and jobs simply stop moving with nothing on screen to say why.
+  // Announce the outage ONCE, and announce recovery once, so the command
+  // center can tell a viewer that Atelier has gone blind rather than idle.
+  const nowDegraded = tasks.length > 0 && pollFailures >= tasks.length;
+  if (nowDegraded && !pollerDegraded) {
+    pollerDegraded = true;
+    broadcast({
+      type: "error",
+      message: "Lost contact with the Atelier subgraph — jobs will not advance until it returns. Escrowed funds are unaffected.",
+      timestamp: Date.now(),
+    });
+  } else if (!nowDegraded && pollerDegraded) {
+    pollerDegraded = false;
+    broadcast({ type: "error", message: "Subgraph contact restored — the agent is reading the chain again.", timestamp: Date.now() });
+  }
+}
+
+/**
+ * Repair every dispute refund this daemon has ever written from a guess.
+ *
+ * Two generations of bad arithmetic left credits in the ledger for money that
+ * had not moved — #56 carried $3.70 against an actual return of $1.25. Rather
+ * than hard-code that one escrow a third time, every refund entry is checked
+ * against the contract's own DisputeResolved event and rewritten if it differs.
+ *
+ * Runs on boot. correctTreasuryEntry is keyed on the entry's tx_hash, so a
+ * figure that already matches is left alone and re-running costs nothing.
+ */
+void (async () => {
+  /**
+   * ONE sweep, not one per commission.
+   *
+   * Arc's RPC caps a log range at 9,000 blocks — about 75 minutes — so reaching
+   * back a week means ~85 sequential requests. Doing that per escrow would have
+   * meant thousands of calls on every boot to answer a question that one pass
+   * over the same blocks answers for all of them at once.
+   */
+  let sweep: Map<string, atelier.DisputeAward[]>;
+  backfillState = { status: "scanning" };
+  try {
+    sweep = await atelier.recentDisputeAwards(atelier.CHUNKS_PER_DAY * 7);
+  } catch (err) {
+    const error = err instanceof Error ? err.message : String(err);
+    console.warn("[repair] could not sweep dispute history:", error);
+    backfillState = { status: "failed", error };
+    return;
+  }
+  console.log(`[repair] found ${sweep.size} resolved dispute(s) on chain`);
+  const wrote: string[] = [];
+  backfillState = { status: "done", found: sweep.size, wrote };
+  if (!sweep.size) return;
+
+  for (const task of store.listTasks(300)) {
+    if (!task.escrowId) continue;
+    try {
+      const awards = sweep.get(task.escrowId);
+      if (!awards?.length) continue;
+      wrote.push(task.escrowId);
+
+      const toFreelancer = awards.reduce((n, a) => n + a.freelancerAmount, 0);
+      const toClient = awards.reduce((n, a) => n + a.clientAmount, 0);
+      const stake = toFreelancer + toClient;
+      const scope = awards.length === 1 ? `Milestone ${awards[0]!.milestoneIndex + 1}` : `${awards.length} milestones`;
+
+      if (task.clientAddress && store.correctTreasuryEntry(`dispute-refund:${task.escrowId}`, toClient.toFixed(6))) {
+        console.log(`[repair] escrow ${task.escrowId} refund set to $${toClient.toFixed(2)} — the amount the contract states it returned`);
+      }
+
+      /**
+       * Backfill the verdict itself.
+       *
+       * The tracking page reads the decisions table, and the old settlement
+       * wrote nothing to it — so a client whose dispute HAD been ruled on saw
+       * their trail stop at "escalated to a human arbiter", forever, with
+       * $0.00 paid out. The ending existed on-chain and nowhere they could see
+       * it. Both writes are keyed on the escrow, so this is safe to re-run.
+       */
+      store.recordDecision({
+        id: `dispute-resolved:${task.escrowId}`,
+        taskId: task.escrowId,
+        type: "dispute_resolved",
+        reasoning:
+          `A human arbiter reviewed the work and ruled. ${scope} was worth $${stake.toFixed(2)}, ` +
+          `split $${toFreelancer.toFixed(2)} to the freelancer and $${toClient.toFixed(2)} back to the client.`,
+        target: store.hiredFor(task.escrowId) ?? undefined,
+        timestamp: Date.now(),
+      });
+
+      if (toFreelancer > 0.000001) {
+        store.recordPaymentOnce({
+          id: `dispute-award:${task.escrowId}`,
+          direction: "escrow_release",
+          escrowId: task.escrowId,
+          amountUsdc: toFreelancer.toFixed(6),
+          counterparty: store.hiredFor(task.escrowId) ?? undefined,
+          reason: `Arbiter's award on ${scope.toLowerCase()}`,
+        });
+      }
+    } catch (err) {
+      console.warn(`[repair] could not check escrow ${task.escrowId}:`, err instanceof Error ? err.message : err);
+    }
+  }
+})();
+
+/*
+ * One sweep at a time.
+ *
+ * setInterval does not wait for an async callback, so a sweep slower than the
+ * tick overlaps the next one. Both then read the "already scored" marker before
+ * either writes it, and the same applicant is sent to the model twice.
+ *
+ * Seen live the moment the chain fallback started carrying reads: the log walk
+ * plus a scoring call runs past 15s, and escrow 7's single applicant was scored
+ * twice fifteen seconds apart — two rankings, two no_suitable_applicant rows,
+ * double the tokens, against a budget that was already rate-limited.
+ *
+ * Skipping a tick costs nothing: the next one is fifteen seconds away and the
+ * work is idempotent by design.
+ */
+/* Counts poll passes, so the chain-wide sweeps can run on their own cadence. */
+let sweepTick = 0;
+
+let sweeping = false;
+setInterval(() => {
+  if (sweeping) return;
+  sweeping = true;
+  void pollOnce().finally(() => { sweeping = false; });
+}, 15_000);
+
+// Second door into the worker layer. Dormant without a bot token; the daemon
+// boots and runs identically either way.
+telegram.startTelegramBot();
+
+/** Atelier milestone states we care about once an arbiter is involved. */
+const MILESTONE_RESOLVED = 5;
+
+/**
+ * Notice when a human arbiter has ruled, and finish the job properly.
+ *
+ * Escalation was treated as the end of Atelier's involvement: the task was
+ * marked "disputed" and dropped out of the poll set forever. So when a dispute
+ * was actually resolved on Atelier — money moved, the split was decided —
+ * nothing on this side noticed. The tracking page said "with a human arbiter"
+ * indefinitely, neither the freelancer nor the client was told the outcome, and
+ * the client's returned share never reappeared in their balance even though the
+ * treasury had received it.
+ *
+ * Handing a decision to a human does not end our obligation to report it.
+ */
+async function settleResolvedDispute(task: store.TaskRow, brief: { milestones?: { amount: number }[]; budget?: number }): Promise<void> {
+  if (!task.escrowId) return;
+
+  const result = await graphQuery<{ escrow: GQLEscrow | null }>(GET_JOB_BY_ID, { escrowId: task.escrowId });
+  const escrow = result.escrow;
+  if (!escrow) return;
+
+  const milestones = escrow.milestones ?? [];
+
+  /**
+   * A dispute is over when the milestone STOPS being disputed — not when it
+   * reaches a "resolved" state.
+   *
+   * Checked against the real contract rather than the enum: resolving #56 on
+   * Atelier moved its milestone to APPROVED (2), never to RESOLVED (5). A
+   * check for status 5 would have waited forever, which is the same bug as
+   * before wearing a different hat.
+   */
+  if (milestones.some((m) => Number(m.status) === MILESTONE_DISPUTED)) return;
+
+  /**
+   * The award comes from the DisputeResolved event, and from nothing else.
+   *
+   * This figure has now been wrong twice, in two different ways, and both times
+   * a real person was told a number for money that had not moved:
+   *
+   *   1. Inferred from the brief — announced "$2.50 to each party" when the
+   *      arbiter had awarded $1.25.
+   *   2. Inferred from the contract's `totalAmount` as budget − paid − fee —
+   *      credited $3.70 when $1.25 had come back. `totalAmount` is only
+   *      decremented by the freelancer's share, so it cannot answer this.
+   *
+   * Atelier states both halves itself, at the moment it moves the money:
+   * DisputeResolved(…, freelancerAmount, clientAmount, …). Verified against
+   * #56, whose event reads freelancer $1.25 / client $1.25 and matches two USDC
+   * transfers in the same block. No arithmetic, no assumption, no third way to
+   * get this wrong.
+   */
+  const awards = await atelier.disputeAwards(BigInt(task.escrowId));
+  if (!awards.length) return; // no stated award, no settlement — try again next pass
+
+  const paidOut = awards.reduce((n, a) => n + a.freelancerAmount, 0);
+  const returned = awards.reduce((n, a) => n + a.clientAmount, 0);
+
+  /**
+   * Resolving a dispute settles ONE milestone, not the job.
+   *
+   * #56 was a two-milestone commission; milestone 0 was disputed and resolved,
+   * milestone 1 was never delivered and its $2.50 is still escrowed. Marking
+   * the whole job completed there would have closed a commission that still
+   * holds money — so it only completes when nothing is left outstanding.
+   */
+  const outstanding = milestones.filter((m) => Number(m.status) === 0).length;
+  store.updateTaskStatus(task.id, outstanding ? "active" : "completed", task.escrowId);
+
+  // Give the client back what the arbiter did not award. The money is already
+  // in the treasury — this is the bookkeeping that makes it theirs again.
+  if (task.clientAddress && returned > 0.000001) {
+    store.recordTreasuryEntry({
+      id: randomUUID(),
+      party: task.clientAddress,
+      direction: "refund",
+      amountUsdc: returned.toFixed(6),
+      txHash: `dispute-refund:${task.escrowId}`,
+    });
+  }
+
+  const jobLink = `${config.publicAppUrl}/jobs/${task.escrowId}`;
+  // A dispute is over ONE milestone, so the sentence has to say which stake was
+  // split. "$2.50 split 50/50" against a $5 job reads as the whole job, which
+  // is precisely the confusion #56 caused.
+  const stake = paidOut + returned;
+  const scope = awards.length === 1 ? `Milestone ${awards[0]!.milestoneIndex + 1}` : `${awards.length} milestones`;
+
+  /**
+   * "you" only where there is a single, known reader.
+   *
+   * One sentence was being sent to the freelancer, sent to the client, AND
+   * written into the public decision record. "…and $8.00 back to you" is right
+   * for exactly one of those three: the freelancer read their own rejection
+   * notice and saw eight dollars coming back to them.
+   *
+   * So the neutral wording is the default and the second person is the special
+   * case, rather than the other way round.
+   */
+  const said = (who: string) =>
+    paidOut <= 0.000001
+      ? `${scope} was worth $${stake.toFixed(2)}. The arbiter awarded the freelancer nothing.`
+      : returned <= 0.000001
+        ? `${scope} was worth $${stake.toFixed(2)}, and the arbiter awarded all of it to the freelancer.`
+        : `${scope} was worth $${stake.toFixed(2)}, split $${paidOut.toFixed(2)} to the freelancer and $${returned.toFixed(2)} back to ${who}.`;
+
+  /** For the freelancer, the public feed, and the record. */
+  const outcome = said("the client");
+  /** For the client's own inbox, where "you" is unambiguous. */
+  const outcomeForClient = said("you");
+  const remainder = outstanding
+    ? ` ${outstanding} milestone(s) of this commission are still undelivered, and that money stays in escrow.`
+    : "";
+
+  /**
+   * WRITE THE ENDING DOWN.
+   *
+   * The tracking page builds its trail from the decisions table, and this
+   * settlement only ever broadcast over SSE and messaged Telegram. Both are
+   * ephemeral: a client who reloaded the page saw their commission stop dead at
+   * "escalated to a human arbiter", with no verdict and $0.00 paid out — the
+   * one moment in the whole flow they most need to see recorded.
+   *
+   * INSERT OR REPLACE on a deterministic id, so a poller pass that re-settles
+   * the same escrow rewrites this row instead of stacking duplicates.
+   */
+  store.recordDecision({
+    id: `dispute-resolved:${task.escrowId}`,
+    taskId: task.escrowId,
+    type: "dispute_resolved",
+    reasoning: `A human arbiter reviewed the work and ruled. ${outcome}${remainder}`,
+    target: store.hiredFor(task.escrowId) ?? undefined,
+    timestamp: Date.now(),
+  });
+
+  /**
+   * And record the award as a payment, so "Paid out" tells the truth.
+   *
+   * That figure counts payments with direction escrow_release, which Atelier
+   * writes when IT releases a milestone. An arbiter's award moves the same
+   * money through the same escrow without Atelier touching it, so the page
+   * showed $0.00 for a freelancer who had been paid $1.25. Keyed on the escrow
+   * so re-settling cannot pay them twice on paper.
+   */
+  if (paidOut > 0.000001) {
+    store.recordPaymentOnce({
+      id: `dispute-award:${task.escrowId}`,
+      direction: "escrow_release",
+      escrowId: task.escrowId,
+      amountUsdc: paidOut.toFixed(6),
+      counterparty: store.hiredFor(task.escrowId) ?? undefined,
+      reason: `Arbiter's award on ${scope.toLowerCase()}`,
+    });
+  }
+
+  broadcast({
+    type: "task_completed",
+    message: `Dispute resolved on escrow ${task.escrowId}. ${outcome}`,
+    escrowId: task.escrowId,
+    timestamp: Date.now(),
+  });
+
+  void telegram.notifyWorkerForEscrow(
+    task.escrowId,
+    [
+      "⚖️ <b>The dispute on your job has been resolved.</b>",
+      "",
+      telegram.esc(outcome),
+      paidOut > 0.000001 ? "Your share is in your wallet — /balance to see it." : "",
+      "",
+      jobLink,
+    ]
+      .filter(Boolean)
+      .join("\n"),
+  );
+
+  void telegram.notifyClientForEscrow(
+    task.escrowId,
+    [
+      "⚖️ <b>The dispute on your commission has been resolved.</b>",
+      "",
+      telegram.esc(outcomeForClient + remainder),
+      returned > 0.000001 ? `$${returned.toFixed(2)} is back in your Atelier balance to commission or withdraw.` : "",
+      "",
+      jobLink,
+    ]
+      .filter(Boolean)
+      .join("\n"),
+  );
+
+  console.log(`[poller] dispute on ${task.escrowId} resolved — paid $${paidOut.toFixed(2)}, returned $${returned.toFixed(2)}`);
+}

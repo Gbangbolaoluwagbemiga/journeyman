@@ -1,0 +1,415 @@
+// AgentClient — the agent. Runs the full hire loop headlessly on the
+// server: brief → escrow → applications → hire → review → pay. No browser
+// involved; the React app only ever watches this over SSE.
+//
+// Two bugs fixed from the v1 (browser) prototype:
+//   1. Escalation counter — `shouldEscalateToHuman` now receives the FULL review
+//      history for a milestone (persisted in SQLite via store.appendReview) and
+//      a FIXED max (brief.revisionRounds), instead of a single-element array and
+//      a number that shrank every call (which meant it could never escalate).
+//      History is persisted rather than held in memory because a daemon restart
+//      mid-dispute would otherwise reset the rejection count to zero.
+//   2. Application scoring is one comparative call across all applicants
+//      (ApplicationScorer.pickBestApplicant), not N isolated calls with no
+//      cross-applicant context and a bigger prompt-injection surface.
+
+import { generateBrief } from "./BriefGenerator.js";
+import { pickBestApplicant } from "./ApplicationScorer.js";
+import { reviewWork, buildRevisionRequest, shouldEscalateToHuman, type WorkReviewResult } from "./WorkReviewer.js";
+import type { AcceptanceBrief, AgentDecision, Application } from "../web3/types.js";
+import { graphQuery } from "../graph/client.js";
+import { GET_JOB_APPLICATIONS, type GQLApplication } from "../graph/queries.js";
+import * as atelier from "../web3/atelier.js";
+import type { AtelierGateway } from "../circle/gateway.js";
+import { config } from "../config.js";
+import * as store from "../store.js";
+import { parseUnits } from "viem";
+
+export type AgentEventType =
+  | "brief_generated"
+  | "job_posted"
+  | "applications_fetched"
+  | "application_scored"
+  | "applicant_accepted"
+  | "no_suitable_applicant"
+  | "portfolio_verified"
+  | "work_submitted"
+  | "work_approved"
+  | "work_rejected"
+  | "revision_requested"
+  | "escalated_to_human"
+  | "payment_released"
+  | "task_completed"
+  | "error";
+
+export interface AgentEvent {
+  type: AgentEventType;
+  message: string;
+  decision?: AgentDecision;
+  escrowId?: string;
+  txHash?: string;
+  /** USDC amount tied to this event (job budget on post, milestone amount on release) — surfaced in the payment feed. */
+  amountUsdc?: string;
+  /** Who Atelier paid/was paid by — only set on payment-bearing events. */
+  counterparty?: string;
+  /**
+   * The job's title, carried on job_posted.
+   *
+   * Set here rather than looked up, because at the moment this fires the task
+   * row still has escrow_id NULL — the row is only updated with the escrow id
+   * AFTER processInstruction returns. Anything downstream that tried to find
+   * the job by escrow id found nothing, which is why the "new quest" broadcast
+   * to freelancers had never once fired.
+   */
+  title?: string;
+  timestamp: number;
+}
+
+export type AgentEventCallback = (event: AgentEvent) => void;
+
+export class AgentClient {
+  private onEvent: AgentEventCallback;
+  private decisions: AgentDecision[] = [];
+  /** Lazily resolved — the daemon still boots without Circle configured; only this buy-side call needs it. */
+  private getGateway?: () => AtelierGateway;
+
+  constructor(onEvent: AgentEventCallback, getGateway?: () => AtelierGateway) {
+    this.onEvent = onEvent;
+    this.getGateway = getGateway;
+  }
+
+  private emit(type: AgentEventType, message: string, extra?: Partial<AgentEvent>) {
+    this.onEvent({ type, message, timestamp: Date.now(), ...extra });
+  }
+
+  // ── STEP 1: instruction → brief → posted escrow ──────────────────────────
+  async processInstruction(instruction: string): Promise<{ brief: AcceptanceBrief; escrowId: bigint }> {
+    this.emit("brief_generated", "Generating acceptance brief from the client's instruction...");
+    const { brief } = await generateBrief(instruction);
+    this.emit(
+      "brief_generated",
+      `Brief generated: "${brief.title}" — ${brief.criteria.length} acceptance criteria, ${brief.milestones.length} milestone(s)`,
+    );
+
+    this.emit("job_posted", "Posting job to Atelier escrow on Arc...");
+    const { escrowId, txHash } = await atelier.createEscrow({
+      totalAmount: parseUnits(brief.budget.toString(), 6),
+      durationDays: BigInt(brief.durationDays),
+      milestoneAmounts: brief.milestones.map((m) => parseUnits(m.amount.toString(), 6)),
+      milestoneDescriptions: brief.milestones.map((m) => m.description),
+      projectTitle: brief.title,
+      // briefHash appended so the brief can't be silently altered after the escrow
+      // is live, but as plain readable text — Atelier's own UI renders this field
+      // raw for freelancers, and nothing downstream ever parses it back as JSON, so
+      // JSON.stringify()-ing it just showed up as gibberish on a real, live-facing surface.
+      projectDescription: `${instruction}\n\nCriteria hash (verifies the brief hasn't changed): ${brief.briefHash}`,
+    });
+    /*
+     * Put its own capital to work while the job waits.
+     *
+     * This is the ONE place the decision is genuinely the agent's to make,
+     * and the distinction is the whole reason it is safe: here the agent IS the
+     * depositor. It commissioned the work through /api/hire, it funded the
+     * escrow from its own treasury, and the controller will only accept the
+     * depositor's signature — so opting in commits nobody but itself.
+     *
+     * On an Autopilot job the depositor is the client, and the same call
+     * reverts with Unauthorized. That is not a limitation to work around; it is
+     * the line that makes "the agent manages the job, never the money" true,
+     * and this is what it looks like on the side of the line where the money
+     * really is the agent's.
+     *
+     * Non-fatal. The job is funded and real either way, and a commission is not
+     * worth failing over a term that only ever improves it.
+     */
+    try {
+      await atelier.setYieldOptIn(escrowId, true);
+    } catch (err) {
+      console.warn(
+        "[agent] escrow funded but not put to work:",
+        err instanceof Error ? err.message : err,
+      );
+    }
+
+    this.emit("job_posted", `Job posted on-chain. Escrow ID: ${escrowId}. $${brief.budget} locked in escrow.`, {
+      escrowId: escrowId.toString(),
+      amountUsdc: brief.budget.toString(),
+      txHash,
+      counterparty: "Atelier escrow",
+      title: brief.title,
+    });
+
+    return { brief, escrowId };
+  }
+
+  // ── STEP 2: poll applications, comparative-score, hire ───────────────────
+  async reviewApplications(escrowId: bigint, brief: AcceptanceBrief): Promise<Application | null> {
+    // No subgraph check here on purpose. graphQuery answers a single-escrow
+    // read from the chain when GRAPH_URL is unset, and this guard turned that
+    // fallback into dead code: scoring threw before ever calling it, so no
+    // deployment without an indexer could hire anyone.
+
+    this.emit("applications_fetched", "Fetching applications from subgraph...");
+    const result = await graphQuery<{ escrow: { applications: GQLApplication[] } | null }>(GET_JOB_APPLICATIONS, {
+      escrowId: escrowId.toString(),
+    });
+
+    const applications: Application[] = (result.escrow?.applications ?? []).map((a) => ({
+      freelancerAddress: a.freelancer,
+      coverLetter: a.coverLetter,
+      proposedTimeline: Number(a.proposedTimeline),
+      appliedAt: Number(a.timestamp) * 1000,
+      status: "pending" as const,
+    }));
+
+    this.emit("applications_fetched", `${applications.length} application(s) received. Scoring comparatively...`);
+
+    const { winner, scores: scored } = await pickBestApplicant(applications, brief, (decision) => {
+      this.decisions.push({ ...decision, taskId: escrowId.toString() });
+      this.emit("application_scored", `Scored ${decision.target?.slice(0, 8)}... — ${decision.score}/100`, {
+        decision: { ...decision, taskId: escrowId.toString() },
+        escrowId: escrowId.toString(),
+      });
+    });
+
+    if (!winner) {
+      // Recorded as a DECISION, not just an event. It was emitted without one,
+      // so nothing reached the decision log — the ledger showed a row of low
+      // scores and then silence, with no statement of what the agent
+      // concluded or why the job had stalled. Deciding that nobody is good
+      // enough is a decision, and the whole promise of this project is that
+      // every decision is written down and readable.
+      const best = Math.max(0, ...scored.map((sc) => sc.score));
+      const decision: AgentDecision = {
+        id: crypto.randomUUID(),
+        taskId: escrowId.toString(),
+        type: "no_suitable_applicant",
+        reasoning:
+          `Reviewed ${applications.length} applicant(s); the strongest scored ${best}/100, below the ${config.hireScoreThreshold} required to hire. ` +
+          `The commission stays open and the budget stays locked — nobody is paid for work that wasn't done well enough, ` +
+          `and nobody loses their claim on it. New applicants are scored as they arrive.`,
+        timestamp: Date.now(),
+      };
+      this.decisions.push(decision);
+      this.emit("no_suitable_applicant", `No applicant reached ${config.hireScoreThreshold}/100 (best was ${best}). The commission stays open.`, {
+        decision,
+        escrowId: escrowId.toString(),
+      });
+      return null;
+    }
+
+    // Buy-side x402: pay a marketplace service to verify the leading applicant's
+    // portfolio before committing to hire — real robot-to-robot payment, mid-decision.
+    // Non-fatal: a verification-service outage shouldn't block hiring a real human.
+    if (config.portfolioCheckUrl && this.getGateway) {
+      try {
+        const gateway = this.getGateway();
+        const result = await gateway.pay<{ reputationScore: number; verified: boolean; summary: string }>(
+          `${config.portfolioCheckUrl}/verify?address=${winner.freelancerAddress}`,
+        );
+        const verifyDecision: AgentDecision = {
+          id: crypto.randomUUID(),
+          taskId: escrowId.toString(),
+          type: "portfolio_verified",
+          reasoning: `Paid $${result.formattedAmount} to verify ${winner.freelancerAddress.slice(0, 8)}...'s track record: score ${result.data.reputationScore}/100 — ${result.data.summary}`,
+          target: winner.freelancerAddress,
+          score: result.data.reputationScore,
+          timestamp: Date.now(),
+        };
+        this.decisions.push(verifyDecision);
+        this.emit("portfolio_verified", verifyDecision.reasoning, {
+          decision: verifyDecision,
+          escrowId: escrowId.toString(),
+          txHash: result.transaction,
+          amountUsdc: result.formattedAmount,
+          counterparty: "PortfolioCheck service",
+        });
+      } catch (err) {
+        this.emit(
+          "portfolio_verified",
+          `Portfolio verification unavailable (${err instanceof Error ? err.message : String(err)}) — proceeding on application score alone.`,
+          { escrowId: escrowId.toString() },
+        );
+      }
+    }
+
+    const txHash = await atelier.acceptFreelancer(escrowId, winner.freelancerAddress as `0x${string}`);
+    const winnerDecision: AgentDecision = {
+      id: crypto.randomUUID(),
+      taskId: escrowId.toString(),
+      type: "applicant_accepted",
+      reasoning: `Selected ${winner.freelancerAddress} as best applicant — highest comparative score meeting the brief's criteria.`,
+      target: winner.freelancerAddress,
+      timestamp: Date.now(),
+    };
+    this.decisions.push(winnerDecision);
+    this.emit("applicant_accepted", `Hired ${winner.freelancerAddress.slice(0, 8)}...`, {
+      decision: winnerDecision,
+      escrowId: escrowId.toString(),
+      txHash,
+    });
+
+    return winner;
+  }
+
+  // ── STEP 3: review submitted milestone work ───────────────────────────────
+  async reviewMilestone(
+    escrowId: bigint,
+    milestoneIndex: bigint,
+    submissionDescription: string,
+    submissionLink: string,
+    brief: AcceptanceBrief,
+    milestoneDescription: string,
+  ): Promise<void> {
+    this.emit("work_submitted", "Work submitted. Reviewing against acceptance brief...", { escrowId: escrowId.toString() });
+
+    const review = await reviewWork(submissionDescription, submissionLink, brief, milestoneDescription);
+
+    // Persisted, not in-memory: a daemon restart used to wipe this Map and hand
+    // the freelancer unlimited fresh revision rounds. Append first, then read
+    // the whole history back, so `history` always includes this review.
+    const eId = escrowId.toString();
+    const mIdx = milestoneIndex.toString();
+    store.appendReview(eId, mIdx, review);
+    const history = store.listReviews<WorkReviewResult>(eId, mIdx);
+
+    if (review.approved) {
+      const decision: AgentDecision = {
+        id: crypto.randomUUID(),
+        taskId: escrowId.toString(),
+        type: "work_approved",
+        reasoning: review.reasoning,
+        timestamp: Date.now(),
+      };
+      this.decisions.push(decision);
+      this.emit("work_approved", `Work approved (${review.score}/100). Releasing payment on-chain...`, {
+        decision,
+        escrowId: escrowId.toString(),
+      });
+
+      const txHash = await atelier.approveMilestone(escrowId, milestoneIndex);
+      const milestoneAmount = brief.milestones[Number(milestoneIndex)]?.amount;
+      this.emit("payment_released", "Payment released. Milestone complete.", {
+        escrowId: escrowId.toString(),
+        txHash,
+        amountUsdc: milestoneAmount != null ? milestoneAmount.toString() : undefined,
+      });
+      store.clearReviews(eId, mIdx);
+      return;
+    }
+
+    // Rejection path — never final, always constructive. Uses the FIXED
+    // brief.revisionRounds against the FULL history for this milestone.
+    /**
+     * A floor of three rounds, whatever the brief says.
+     *
+     * Two was enough to escalate someone who had visibly improved between
+     * submissions — they fixed what they were told about, resubmitted, and were
+     * handed to an arbiter without a third chance. A person who is converging
+     * on the brief should be allowed to finish converging; the escalation is
+     * there for work that is not getting closer, not for work that is.
+     */
+    const maxRounds = Math.max(3, brief.revisionRounds ?? 3);
+    if (shouldEscalateToHuman(history, maxRounds)) {
+      /**
+       * Say what was wrong with the LAST delivery, not just that we ran out of
+       * rounds.
+       *
+       * This used to escalate with "after N revision rounds, work still does not
+       * meet brief criteria" and throw the review away — the review it had just
+       * computed, with per-criterion results and written feedback sitting in
+       * memory. So a freelancer who fixed everything they were told about was
+       * handed to an arbiter without ever being told what still failed, and the
+       * ARBITER inherited a dispute with no statement of the case. Both of them
+       * are now deciding blind on the one submission that mattered most.
+       */
+      const failed = review.criteriaResults.filter((c) => !c.passed);
+      const decision: AgentDecision = {
+        id: crypto.randomUUID(),
+        taskId: escrowId.toString(),
+        type: "escalated",
+        reasoning: [
+          `After ${maxRounds} revision round(s), the work still does not meet the brief. Escalating to a human arbiter via Atelier's dispute system.`,
+          "",
+          `Final submission scored ${review.score}/100.`,
+          review.feedback ? `What was still missing: ${review.feedback}` : "",
+          failed.length
+            ? `Criteria not met: ${failed.map((c) => `${c.criterion}${c.note ? ` — ${c.note}` : ""}`).join(" · ")}`
+            : "",
+          review.inspectedArtifact === false && review.inspectionNote ? `Note on inspection: ${review.inspectionNote}` : "",
+        ]
+          .filter(Boolean)
+          .join("\n"),
+        timestamp: Date.now(),
+      };
+      this.decisions.push(decision);
+      const txHash = await atelier.disputeMilestone(
+        escrowId,
+        milestoneIndex,
+        // This string is what the human arbiter sees on Atelier. "Revision
+        // rounds exhausted" tells them nothing they can rule on.
+        `Atelier AI: ${history.length} revision round(s) exhausted. Final submission scored ${review.score}/100. ${
+          review.feedback || "See the decision log for the full reasoning."
+        }`.slice(0, 500),
+      );
+      this.emit("escalated_to_human", "Max revisions reached. Escalated to human arbiter.", {
+        decision,
+        escrowId: escrowId.toString(),
+        txHash,
+      });
+      return;
+    }
+
+    const revisionsRemaining = maxRounds - history.filter((r) => !r.approved).length;
+    const feedback = buildRevisionRequest(review, revisionsRemaining);
+
+    /**
+     * Tell them WHICH criteria failed, not just that something did.
+     *
+     * The per-criterion breakdown already existed and already went on-chain in
+     * the rejection feedback — but the decision's `reasoning` carried only the
+     * prose summary, and `reasoning` is what reaches the freelancer's Telegram,
+     * the client's Telegram, the public decision feed and the commission page.
+     * So the one audience who had to act on it got the vaguest version, and
+     * spent a revision round guessing which of seven criteria to fix.
+     *
+     * The passing criteria are listed too. On a rejection that is not padding:
+     * it tells someone what NOT to change on the next attempt, which is exactly
+     * how a second submission accidentally breaks what the first got right.
+     */
+    const failed = review.criteriaResults.filter((c) => !c.passed);
+    const met = review.criteriaResults.filter((c) => c.passed);
+    const reasoning = [
+      review.feedback,
+      failed.length
+        ? `\nStill to fix (${failed.length} of ${review.criteriaResults.length}):\n` +
+          failed.map((c) => `✗ ${c.criterion}${c.note ? ` — ${c.note}` : ""}`).join("\n")
+        : "",
+      met.length ? `\nAlready met — keep these:\n${met.map((c) => `✓ ${c.criterion}`).join("\n")}` : "",
+      `\n${revisionsRemaining} revision round${revisionsRemaining === 1 ? "" : "s"} left before this goes to a human arbiter.`,
+    ]
+      .filter(Boolean)
+      .join("\n")
+      // Telegram caps a message at 4096 characters, and this is one part of it.
+      .slice(0, 2800);
+
+    const decision: AgentDecision = {
+      id: crypto.randomUUID(),
+      taskId: escrowId.toString(),
+      type: "work_rejected",
+      reasoning,
+      timestamp: Date.now(),
+    };
+    this.decisions.push(decision);
+    const txHash = await atelier.rejectMilestone(escrowId, milestoneIndex, feedback);
+    this.emit(
+      "revision_requested",
+      `Work scored ${review.score}/100. Revision requested (${revisionsRemaining} round(s) left).`,
+      { decision, escrowId: escrowId.toString(), txHash },
+    );
+  }
+
+  getDecisionLog(): AgentDecision[] {
+    return [...this.decisions];
+  }
+}

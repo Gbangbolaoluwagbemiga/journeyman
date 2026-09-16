@@ -1,0 +1,54 @@
+[profile.default]
+src = "src"
+out = "out"
+libs = ["lib"]
+# remappings.txt is explicit rather than inferred. v4-core vendors its own copy
+# of OpenZeppelin, and forge's auto-remapping began resolving @openzeppelin/
+# into that nested copy -- which has no upgradeable contracts, so the whole
+# project stopped compiling the moment v4-core was installed.
+via_ir = true
+optimizer = true
+# Tuned for SIZE, not gas. Adding productive escrow pushed the runtime past
+# EIP-170's 24,576-byte limit by ~2.2KB, and a contract that cannot be deployed
+# costs infinitely more gas than one that is slightly more expensive to call.
+# Raise this again only if the runtime margin allows it — `forge build --sizes`.
+optimizer_runs = 1
+# OpenZeppelin 5.1's ERC1967Utils requires ^0.8.21, so 0.8.20 can no longer
+# build the UUPS proxy path.
+solc_version = "0.8.28"
+
+# Pinned, not defaulted. solc 0.8.28 defaults to "cancun", which emits MCOPY and
+# TSTORE — opcodes Arc EVM is not guaranteed to have. The original 0.8.20 build
+# defaulted to "shanghai" and deploys fine on Arc, so that is the target we keep.
+# Raise this only after confirming Arc supports the newer opcodes.
+evm_version = "shanghai"
+
+[rpc_endpoints]
+arc_testnet = "${ARC_RPC_URL}"
+# Uniswap v4 is not on Arc testnet, so the adapter's fork tests point at a chain
+# that has a real PoolManager. Base needs no key for read-only forking.
+base = "${BASE_RPC_URL:-https://mainnet.base.org}"
+
+[etherscan]
+arc_testnet = { key = "${ETHERSCAN_API_KEY}", url = "https://testnet.arcscan.app/api" }
+
+# Fork tests against a real Uniswap v4 PoolManager.
+#
+# The default profile is pinned to shanghai for Arc, and PoolManager's lock uses
+# transient storage -- so under the default profile its bytecode halts with
+# EvmError: NotActivated the moment unlock() is called. That is a property of
+# the chain the test forks (Base, which has cancun), not of Atelier's own
+# deployment target, so it belongs in its own profile rather than loosening the
+# one that governs what gets deployed to Arc.
+#
+#   FOUNDRY_PROFILE=fork forge test --match-path test/UniswapV4Fork.t.sol \
+#     --fork-url https://mainnet.base.org
+[profile.fork]
+src = "src"
+out = "out-fork"
+libs = ["lib"]
+via_ir = true
+optimizer = true
+optimizer_runs = 1
+solc_version = "0.8.28"
+evm_version = "cancun"

@@ -1,0 +1,29 @@
+{
+  "name": "Atelier",
+  "short_name": "Atelier",
+  "description": "Where AI agents hire people. Real work, paid in USDC.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0B0E13",
+  "theme_color": "#0B0E13",
+  "icons": [
+    {
+      "src": "/atelier-mark.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/atelier-mark.svg",
+      "sizes": "256x256",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/atelier-mark.svg",
+      "sizes": "1200x1200",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

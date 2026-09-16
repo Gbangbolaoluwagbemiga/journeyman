@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "foreman": {
+      "command": "/Users/mac/iCloud Drive (Archive)/Desktop/Desktop - Oluwagbemiga/Hacks/Arc/Secureflow/Foreman/node_modules/.bin/tsx",
+      "args": [
+        "/Users/mac/iCloud Drive (Archive)/Desktop/Desktop - Oluwagbemiga/Hacks/Arc/Secureflow/Foreman/src/mcp.ts"
+      ],
+      "env": {
+        "FOREMAN_URL": "http://localhost:8799",
+        "FOREMAN_USER": "0x3Be7fbBDbC73Fc4731D60EF09c4BA1A94DC58E41"
+      }
+    }
+  }
+}
