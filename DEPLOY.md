@@ -1,137 +1,129 @@
-# Deploying: the two gates
+# Deploying
 
-Two things need an account only you have. **Do them in this order** — the
-subgraph indexes a contract address and a start block, so deploying it before
-the contract means deploying it twice.
+Everything on-chain is **already deployed and configured**. This is the runbook
+for the parts that need an account only you have, plus how to redo the on-chain
+steps if you ever deploy a fresh proxy.
 
 ---
 
-## Before you start: rotate the deploy key
+## What is live right now
 
-`0x3Be7fbBDbC73Fc4731D60EF09c4BA1A94DC58E41` is the deployer, and its private
-key was visible in a screenshot shared during this build. It holds ~148 on Arc
-testnet, which is only faucet money, but it will also **own the upgradeable
-proxy** — and the owner can replace the implementation over live escrows.
+| | |
+|---|---|
+| Network | Arbitrum Sepolia · chain `421614` |
+| Proxy (**the contract**) | `0x5128B3E2a20d483f68834b26505aFD7457C282dc` |
+| Implementation | `0x1173Bcc9183f29aFbB6f4C7E3c0b25476D3daF0F` · `4.0.1-journeyman-arbitrum` |
+| Deploy block | `309527684` |
+| Yield controller | `0x44a4a235DEb0b32929DDA386E9FE931Dd055d0E3` |
+| Yield venue | `0xcc116FaD144FFAC4AdD5f97820Cd4C286488e24a` — `UniswapV4StableAdapter` |
+| USDC whitelisted | yes — `0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d` |
+| Arbiter authorised | yes — `0x3Be7fbBDbC73Fc4731D60EF09c4BA1A94DC58E41` |
+| Escrows | none — clean history |
 
-That is a different risk class from a testnet balance. Generate a fresh key,
-fund it from the faucet, and put that one in
-`app/contracts/solidity/.env` before deploying.
+All four contracts are verified on Arbiscan.
+
+Check any of it yourself rather than believing this table:
 
 ```bash
-cast wallet new                      # gives you an address + private key
-# fund it: https://faucet.testnet.arc.network
+RPC=https://sepolia-rollup.arbitrum.io/rpc
+P=0x5128B3E2a20d483f68834b26505aFD7457C282dc
+cast call $P "version()(string)"                 --rpc-url $RPC
+cast call $P "owner()(address)"                  --rpc-url $RPC
+cast call $P "getArbiters()(address[])"          --rpc-url $RPC
+cast call $P "whitelistedTokens(address)(bool)" 0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d --rpc-url $RPC
 ```
 
-**Also fixed already:** the source repo's `contracts/.env` had
-`ARC_RPC_URL=https://sepolia-rollup.arbitrum.io/rpc` — Arbitrum Sepolia, not
-Arc. Copying that in and deploying would have put the contract on the wrong
-chain. `app/contracts/solidity/.env` now points at Arc and is verified
-against `cast chain-id` → `5042002`.
+The last two were both wrong on the live proxy for a day after deployment —
+`false` and `[]` — which does not fail at deploy time and does not fail at
+boot. It fails the first time a real person tries to post a job, or the first
+time a dispute needs somebody to rule on it. **Run those four calls after every
+deploy.**
 
 ---
 
-## Gate 1 — the contract (UUPS proxy)
+## Rotate the deploy key
 
-This is what makes "Hand to Autopilot" stop reverting.
+`0x3Be7fbBDbC73Fc4731D60EF09c4BA1A94DC58E41` is the deployer, and its private
+key was visible in a screenshot shared during an earlier build. The balance is
+faucet money, but that address also **owns the upgradeable proxy** — and the
+owner can replace the implementation over live escrows.
+
+That is a different risk class from a testnet balance. Generate a fresh key,
+fund it, deploy a fresh proxy from it, and point everything at that one.
+
+```bash
+cast wallet new
+# gas:  https://faucet.quicknode.com/arbitrum/sepolia
+# USDC: https://faucet.circle.com  (pick Arbitrum Sepolia)
+```
+
+---
+
+## Redeploying the contract from scratch
 
 ```bash
 cd app/contracts/solidity
 set -a && . ./.env && set +a
 
-forge test                                            # 47 must pass first
-forge script script/Deploy.s.sol --rpc-url arc_testnet # simulate
-forge script script/Deploy.s.sol --rpc-url arc_testnet --broadcast
+forge test                                                  # 186 must pass first
+forge script script/Deploy.s.sol --rpc-url arbitrum_sepolia # simulate
+forge script script/Deploy.s.sol --rpc-url arbitrum_sepolia --broadcast --verify
 ```
-
-Simulation currently reports ~**0.29** in gas against a balance of ~148, so
-funding is not a concern.
 
 It prints two addresses. **The PROXY is the contract** — the implementation
 changes on every upgrade, the proxy never does. Everything points at the proxy.
 
-### After it lands
-
-1. **Whitelist USDC**, or nobody can create an escrow:
+Then, in this order, because none of them fail loudly if skipped:
 
 ```bash
+# 1. Whitelist USDC, or createEscrow reverts with TokenNotWhitelisted for
+#    every job anybody tries to post.
 JOURNEYMAN_ADDRESS=<PROXY> forge script script/WhitelistUSDC.s.sol \
-  --rpc-url arc_testnet --broadcast
-```
+  --rpc-url arbitrum_sepolia --broadcast
 
-2. **Authorise at least one arbiter** (your own address is fine for the demo) —
-   without one, disputes have nobody to resolve them:
-
-```bash
+# 2. Authorise an arbiter, or a dispute has nobody who can resolve it and the
+#    money sits until the emergency window opens.
 cast send <PROXY> "authorizeArbiter(address)" <YOUR_ADDRESS> \
-  --rpc-url "$ARC_RPC_URL" --private-key "$PRIVATE_KEY"
+  --rpc-url https://sepolia-rollup.arbitrum.io/rpc --private-key "$PRIVATE_KEY"
+
+# 3. Attach the yield leg: deploys JourneymanYield, deploys the v4 adapter,
+#    opens the USDT/USDC pool if nobody has, and wires the two together.
+PROXY_ADDRESS=<PROXY> forge script script/DeployYieldArbitrum.s.sol \
+  --rpc-url arbitrum_sepolia --broadcast --verify
 ```
 
-3. **Point the app at it** — `app/.env`:
+Point the app at it — `app/.env`:
 
 ```env
 VITE_JOURNEYMAN_CONTRACT_ADDRESS=<PROXY>
+VITE_USDC_TOKEN_CONTRACT=0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d
 ```
 
-   and `backend/.env` (`CONTRACT_ADDRESS`), and
-   `agent/daemon/.env` (`JOURNEYMAN_CONTRACT_ADDRESS`).
+…and `backend/.env` and `agent/daemon/.env` (`CONTRACT_ADDRESS`,
+`JOURNEYMAN_CONTRACT_ADDRESS`, `JOURNEYMAN_DEPLOY_BLOCK`).
 
-4. **Sync the ABI** so the frontend can encode the new functions:
+### Upgrading, rather than redeploying
 
 ```bash
-cd app && npm run sync-abi
+forge test --match-path test/JourneymanUpgrade.t.sol   # these must pass
+PROXY_ADDRESS=<PROXY> forge script script/Upgrade.s.sol \
+  --rpc-url arbitrum_sepolia --broadcast --verify
 ```
 
-5. **Delete the honesty markers**, which are now out of date — and only now:
-   - the `TRUE IN THE REPO, NOT YET ON-CHAIN` block in `src/pages/PostJobPage.tsx`
-   - the "built and tested but not yet deployed" clause in
-     `src/pages/AutopilotComposePage.tsx`
-   - the status line at the top of `docs/adr/0001-autopilot-delegation.md`
+Bump `version()` in the same commit. A bad upgrade does not revert — it
+reinterprets live escrow storage under the new layout and keeps going, with
+wrong numbers and real money behind them.
 
 ---
 
-## Gate 1 is done
+## The subgraph (Subgraph Studio)
 
-| | |
-|---|---|
-| Proxy (this is the contract) | `0x5128B3E2a20d483f68834b26505aFD7457C282dc` |
-| Implementation | `0x38c42aBd2C652784AE3F2100Fa34127Ad67cAc5f` |
-| Deploy block | `60797735` |
-| USDC accepted / arbiter set | yes / yes |
-| Escrows | none — clean history |
+The manifest already targets `arbitrum-sepolia` at the live address and start
+block. What is left is an account step.
 
-**`VITE_GRAPH_URL` and `GRAPH_URL` are deliberately blank.** The Goldsky
-endpoint indexes the pre-Journeyman contract, so leaving it set made Browse Jobs
-list 65 escrow ids that do not exist on this contract, each rendering as
-"0 USDC / No description available". Blank means the app falls back to RPC
-multicall against the contract it is actually pointed at. **Fill them in with
-the Studio query URL below — not with the old Goldsky one.**
-
-## Gate 2 — the subgraph (Subgraph Studio)
-
-This is the $5,000 Graph track. Goldsky does not qualify; the track asks for
-"an API key from Subgraph Studio".
-
-1. Go to [Subgraph Studio](https://thegraph.com/studio/), connect a wallet.
-2. **Create a Subgraph**, name it `journeyman`, network **Arc Testnet**.
-3. Copy the **deploy key** it shows you.
-
-Then update the manifest to the new contract — this is why the contract goes
-first. In `subgraph/subgraph.yaml`:
-
-```yaml
-source:
-  address: "<PROXY>"
-  startBlock: <the block the proxy was deployed in>
-```
-
-Get the block from the deploy output, or:
-
-```bash
-cast receipt <DEPLOY_TX_HASH> --rpc-url "$ARC_RPC_URL" | grep blockNumber
-```
-
-Using the right `startBlock` matters: too low and indexing crawls millions of
-empty blocks, too high and you silently miss escrows.
+1. [Subgraph Studio](https://thegraph.com/studio/), connect a wallet.
+2. **Create a Subgraph**, name it `journeyman`, network **Arbitrum Sepolia**.
+3. Copy the **deploy key**.
 
 ```bash
 cd subgraph
@@ -143,62 +135,33 @@ npm run deploy:studio          # asks for a version label, e.g. v0.0.1
 
 Studio then shows a **query URL** with an API key in it.
 
-### After it's synced
+### After it syncs
 
-1. Put the query URL in `app/.env` (`VITE_GRAPH_URL`) and
-   `agent/daemon/.env` (`GRAPH_URL`).
+1. Put the query URL in `app/.env` (`VITE_GRAPH_URL`) and `agent/daemon/.env`
+   (`GRAPH_URL`). Both are deliberately blank today: blank means the app falls
+   back to RPC multicall against the contract it is actually pointed at, which
+   is correct but slower. A URL pointing at a subgraph for a DIFFERENT contract
+   is worse than blank — it renders a list of escrow ids that do not exist,
+   each showing "0 USDC / No description available".
 
-2. **Use a rate-limited key.** `VITE_GRAPH_URL` ships inside the browser
-   bundle — anyone can read it out of your JS. Studio lets you cap a key by
-   domain and by rate; do that rather than shipping an unrestricted one.
+2. **Use a rate-limited key.** `VITE_GRAPH_URL` ships inside the browser bundle
+   — anyone can read it out of your JS. Studio lets you cap a key by domain and
+   by rate; do that rather than shipping an unrestricted one.
 
-3. **Now** add `jobManager` to the query, in the same change. It is deliberately
-   left out today — GraphQL *errors* on an unknown field rather than ignoring
-   it, so adding it while Goldsky is still live would break every escrow query,
-   not just the manager lookup. In `src/lib/graph/queries.ts`, add `jobManager`
-   to `ESCROW_CORE` and the field to `GQLEscrow`.
-
----
-
-## Check it worked
+3. Check it returns escrows rather than an error:
 
 ```bash
-# contract
-cast call <PROXY> "version()(string)" --rpc-url "$ARC_RPC_URL"   # 2.0.0-autopilot
-cast call <PROXY> "owner()(address)"  --rpc-url "$ARC_RPC_URL"
-
-# subgraph — should return escrows, not an error
 curl -s <QUERY_URL> -H 'Content-Type: application/json' \
   -d '{"query":"{ escrows(first:3){ id jobManager } }"}'
-
-# app
-cd app && npm run e2e
 ```
 
-Then in the app: post a job, expand it in **My Jobs**, and press **Hand to
-Autopilot**. It should confirm rather than revert — and **Take back control**
-should work immediately after.
-
 ---
 
-## What is still true afterwards
-
-Deploying does not make the product trustless. The owner of that proxy can ship
-a new implementation over live escrows. That is the standard arrangement and it
-is fine, but the honest sentence stays:
-
-> The contract cannot take your money, and the owner can change the contract.
-
-Keep the second clause in the submission.
-
-
----
-
-## Gate 3 — Google sign-in for managed wallets
+## Google sign-in for managed wallets
 
 The managed-worker door provisions a Circle MPC wallet, so it needs to know who
-somebody is before it hands them one. Without this configured the door is closed
-rather than open — an unauthenticated wallet service is worse than none.
+somebody is before it hands them one. Without this configured the door is
+closed rather than open — an unauthenticated wallet service is worse than none.
 
 1. [Google Cloud Console](https://console.cloud.google.com/apis/credentials) →
    **Create credentials** → **OAuth client ID** → **Web application**.
@@ -219,3 +182,29 @@ GOOGLE_CLIENT_ID=…apps.googleusercontent.com
 The daemon uses it as the expected **audience** when verifying tokens. Getting
 that check wrong is what turns any Google-signed token on the internet into a
 valid login here, so the two values must match exactly.
+
+---
+
+## Funding the treasury
+
+Gas and money are different assets here, which they were not on the chain this
+was ported from. The daemon's Circle wallet needs **both**:
+
+  - **ETH** — every transaction it signs on anybody's behalf, plus the drip
+    that lets a new managed worker sign their first application.
+  - **USDC** — the job budgets it funds escrows with.
+
+A treasury holding only USDC looks funded on every dashboard and cannot send a
+single transaction.
+
+---
+
+## What is still true afterwards
+
+Deploying does not make the product trustless. The owner of that proxy can ship
+a new implementation over live escrows. That is the standard arrangement and it
+is fine, but the honest sentence stays:
+
+> The contract cannot take your money, and the owner can change the contract.
+
+Keep the second clause in the submission.

@@ -16,7 +16,7 @@
 --   archived_escrows   per-wallet "hide this job" list
 --   storage bucket     milestone deliverable uploads (10 MB, public read)
 --
--- None of this custodies money. The escrow is on Arc; this is the prose around
+-- None of this custodies money. The escrow is on Arbitrum; this is the prose around
 -- it, which is why every read degrades to empty rather than failing the page.
 
 
@@ -302,7 +302,7 @@ create policy "service role writes dispute resolutions"
 -- The freelancer's view of a settled dispute read the amounts from the
 -- DisputeResolved event via a windowed getLogs scan. That scan looks back a
 -- fixed number of chunks — about 108,000 blocks, named CHUNKS_PER_DAY, which
--- is nothing like a day on Arc. An hour after a dispute was resolved the
+-- is nothing like a day. An hour after a dispute was resolved the
 -- amounts simply stopped being found, and the freelancer's record of what had
 -- been decided about their own payment quietly emptied out.
 --

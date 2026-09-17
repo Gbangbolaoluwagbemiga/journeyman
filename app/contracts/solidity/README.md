@@ -26,9 +26,15 @@ forge test
 ## Tests
 
 `test/` was added during ETHOnline 2026 — the baseline had no Solidity tests at
-all. It currently covers the Autopilot job-manager delegation:
+all, and it has grown with every feature since.
 
-**47 tests, from a baseline of zero.**
+**186 tests, from a baseline of zero**, plus 11 more that only run against a
+fork of the chain this is deployed on:
+
+```bash
+forge test --match-path test/UniswapV4Fork.t.sol \
+  --fork-url https://sepolia-rollup.arbitrum.io/rpc
+```
 
 | File | Tests | What it holds |
 |---|--:|---|
@@ -55,8 +61,8 @@ The contract sits behind an **ERC1967 proxy (UUPS)** so new features ship
 without migrating live escrows.
 
 ```bash
-forge script script/Deploy.s.sol  --rpc-url arc_testnet --broadcast
-PROXY_ADDRESS=0x… forge script script/Upgrade.s.sol --rpc-url arc_testnet --broadcast
+forge script script/Deploy.s.sol  --rpc-url arbitrum_sepolia --broadcast --verify
+PROXY_ADDRESS=0x… forge script script/Upgrade.s.sol --rpc-url arbitrum_sepolia --broadcast --verify
 ```
 
 **The proxy address is the contract.** The frontend, the agent daemon, the
@@ -89,9 +95,14 @@ layout and carries on, with wrong numbers and real money behind them.
 
 ## Deployments
 
-| Network | Address | Notes |
+| Contract | Address | Notes |
 |---|---|---|
-| Arc EVM Testnet (`5042002`) | `0x6142bf4855D4F9dbC1cD8109377d4F4E2AF1ab59` | **Pre-ETHOnline.** Not upgradeable, no job manager. Superseded; keeps its own escrows. |
-| Arc EVM Testnet (`5042002`) | **`0xA93F832ccaAb62123f82D4c92ec897A6Bdb252BE`** | **Current.** UUPS proxy, `2.0.0-autopilot`, deployed in block `60797735`. Implementation `0x38c42aBd2C652784AE3F2100Fa34127Ad67cAc5f`. |
+| Journeyman (proxy) | **`0x5128B3E2a20d483f68834b26505aFD7457C282dc`** | **The contract.** UUPS, `4.0.1-journeyman-arbitrum`, deployed in block `309527684`. Implementation `0x1173Bcc9183f29aFbB6f4C7E3c0b25476D3daF0F`. |
+| JourneymanYield | `0x44a4a235DEb0b32929DDA386E9FE931Dd055d0E3` | Yield controller. Not upgradeable — replacing it while capital is deployed strands that capital, which is why the deploy script refuses to. |
+| UniswapV4StableAdapter | `0xcc116FaD144FFAC4AdD5f97820Cd4C286488e24a` | The venue. USDT/USDC, fee 100, tickSpacing 1, no hooks, against the real PoolManager at `0xFB3e0C6F74eB1a21CC1Da29aeC80D2Dfe6C9a317`. |
+
+All on **Arbitrum Sepolia (`421614`)** and verified on Arbiscan. Earlier
+deployments on Arc EVM belong to [Atelier](../../../ATTRIBUTION.md) and keep
+their own escrows; nothing here points at them.
 
 See `docs/adr/0001-autopilot-delegation.md`.

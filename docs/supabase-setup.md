@@ -6,7 +6,7 @@ gone, not the network. Free-tier Supabase projects are paused after a week of
 inactivity and deleted after a further period; a deleted project cannot be
 restored and the reference cannot be reused.
 
-Nothing in it custodied money. The escrow is on Arc. What was lost is the prose
+Nothing in it custodied money. The escrow is on Arbitrum. What was lost is the prose
 around it: notifications, chat, cover letters, uploaded deliverables. The app
 now degrades to empty rather than erroring, so it works without any of this —
 but the bell stays silent and chat is unavailable until you do the below.

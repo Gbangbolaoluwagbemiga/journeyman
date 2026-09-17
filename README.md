@@ -8,9 +8,9 @@ The money is locked before the work starts, and it can only move the way the
 contract says. The client cannot disappear with it. We cannot freeze it, take a
 cut of it, or decide who wins a dispute.
 
-[![Arc](https://img.shields.io/badge/Arc-EVM%20Testnet-4FC8D8?style=flat-square)](https://arc.network)
+[![Arbitrum](https://img.shields.io/badge/Arbitrum-Sepolia-28A0F0?style=flat-square)](https://arbitrum.io)
 [![Solidity](https://img.shields.io/badge/Solidity-0.8.28-363636?style=flat-square)](https://soliditylang.org)
-[![Tests](https://img.shields.io/badge/tests-649%20passing-5FD39A?style=flat-square)](#testing)
+[![Tests](https://img.shields.io/badge/tests-977%20passing-5FD39A?style=flat-square)](#testing)
 [![License](https://img.shields.io/badge/License-MIT-blue?style=flat-square)](LICENSE)
 
 </div>
@@ -262,7 +262,7 @@ flowchart TB
         gw["Gateway / x402<br/>agent-to-service payment"]
     end
 
-    subgraph arc["Arc — chain 5042002, USDC is the native currency"]
+    subgraph chain["Arbitrum Sepolia — chain 421614, gas in ETH, payment in USDC"]
         escrow["Journeyman.sol (UUPS proxy)<br/>milestone escrow · jobManager · arbitration"]
         yield["JourneymanYield<br/>investable ceiling · circuit breaker"]
         uni["UniswapV4StableAdapter<br/>single-sided stable LP"]
@@ -296,7 +296,7 @@ contract at two points, fuzz-tested at 128,000 calls, and documented in
 ```mermaid
 sequenceDiagram
     participant C as Client
-    participant E as Journeyman.sol (Arc)
+    participant E as Journeyman.sol (Arbitrum)
     participant A as Autopilot
     participant G as The Graph
     participant F as Freelancer
@@ -362,14 +362,14 @@ Open **http://localhost:5173**.
 
 ## Testing
 
-**965 tests.** The contract suite went from zero.
+**977 tests.** The contract suite went from zero.
 
 | Suite | Count | What it covers |
 |---|--:|---|
 | Contract | **186** | Delegation, upgrade safety, productive escrow, the yield waterfall, self-dealing, whole-journey E2E |
-| Frontend | **450** | Actor semantics, nav, error humanising, worker session, brief reconciliation, job-card badges, the yield terms, declining a job, and what the board does when a read fails |
+| Frontend | **457** | Actor semantics, nav, error humanising, worker session, brief reconciliation, job-card badges, the yield terms, declining a job, and what the board does when a read fails |
 | Backend | **71** | Route handlers, which browsers may call them, what they do when the database is unreachable, and that two spellings of an address are one person |
-| Daemon | **210** | Who the agent tells, who it hires, which jobs it picks up, whether it pays — and the difference between "nothing" and "could not find out" |
+| Daemon | **215** | Who the agent tells, who it hires, which jobs it picks up, whether it pays — and the difference between "nothing" and "could not find out" |
 | Full-stack E2E | **48** | Real browser against real services — Playwright |
 
 A disproportionate share of the recent ones are about a single failure shape:
@@ -381,9 +381,9 @@ it has been found now has a test naming the incident.
 
 ```bash
 (cd app/contracts/solidity && forge test)   # 186
-(cd app && npm test)                        # 450
+(cd app && npm test)                        # 457
 (cd backend && npx vitest run)              # 71
-(cd agent/daemon && npm test)               # 210
+(cd agent/daemon && npm test)               # 215
 (cd app && npm run e2e)                     # 48 — needs all three services up
 
 # Typecheck the web app with `npm run typecheck`, never `tsc --noEmit`:
@@ -395,13 +395,14 @@ it has been found now has a test naming the incident.
 (cd app && npx eslint .)                    # 0 errors
 ```
 
-Eleven of the contract tests are the Uniswap fork suite. They skip without a
-fork, so the count above holds offline; against a real PoolManager they run for
-real, and need the cancun profile because v4 takes its lock with `TSTORE`:
+Eleven more are the Uniswap fork suite, on top of the 186. They skip without a
+fork, so the count above holds offline; with one they run against the chain,
+the PoolManager and the pool this is actually deployed on, minting and
+unwinding real liquidity:
 
 ```bash
-FOUNDRY_PROFILE=fork forge test --match-path test/UniswapV4Fork.t.sol \
-  --fork-url https://mainnet.base.org
+forge test --match-path test/UniswapV4Fork.t.sol \
+  --fork-url https://sepolia-rollup.arbitrum.io/rpc
 ```
 
 Three of the contract suites are **fuzzed invariants at 128,000 calls each**,
@@ -445,7 +446,7 @@ time. It runs in a container with a volume mounted at `/app/data`, because
 without one every deploy silently forgets every job it was running.
 
 **It found work on its first boot.** Starting cold, with an empty database, it
-swept `JobManagerSet` logs on Arc, found an escrow naming its own wallet as
+swept `JobManagerSet` logs on chain, found an escrow naming its own wallet as
 manager, confirmed against the mapping that the client had not revoked it, and
 rebuilt the brief from the escrow's own milestones rather than from the
 description's prose. Nothing told it that job existed — which is the whole point
@@ -498,15 +499,20 @@ freelancer's share after they had taken the job on the strength of it. The 🌱
 tag on a job card therefore means the same thing on delivery day as on the day
 it was posted, and a freelancer does not have to trust anyone for that.
 
-**What the venue is, said plainly.** Uniswap v4 cannot run on Arc: `PoolManager`
-takes its lock with `TSTORE`, and Arc testnet is not a cancun chain. So the
-testnet venue is [`SponsoredVault`](app/contracts/solidity/src/yield/SponsoredVault.sol),
-which trades nothing and earns nothing — its balance rises only when somebody
-deliberately calls `sponsor()`. It is seeded with **0.02 USDC**, which is what
-13% APY pays on 4 USDC over a fourteen-day job. It was 25 to begin with, and a
-completed job claimed all of it: 20 USDC of "yield" on a 10 USDC budget, a 200%
-return nobody should believe. The sponsorship is the return, so sizing it is
-the same act as choosing a rate.
+**What the venue is, said plainly.** It is a real Uniswap v4 position, on the
+real PoolManager at [`0xFB3e…a317`](https://sepolia.arbiscan.io/address/0xFB3e0C6F74eB1a21CC1Da29aeC80D2Dfe6C9a317):
+a USDT/USDC pool, fee 100, tickSpacing 1, no hooks, with the escrow's capital
+single-sided in USDC.
+
+That is the whole reason this is on Arbitrum. The previous chain had no v4 —
+`PoolManager` takes its lock with `TSTORE`, and that chain is not cancun — so
+the venue there was [`SponsoredVault`](app/contracts/solidity/src/yield/SponsoredVault.sol),
+which trades nothing and earns nothing and says so, and the adapter could only
+be proven on a Base fork. The interesting half had to be taken on trust.
+
+It does not any more. The same 11 fork tests now run against Arbitrum Sepolia
+— the chain, the manager and the pool that are deployed — minting and unwinding
+real liquidity. `SponsoredVault` is out of the deployment path.
 
 **Why a client would ever switch it on.** Because the platform fee is waived
 outright — they approve 2.5% less, today, in the number their wallet shows them.
@@ -524,10 +530,10 @@ recruiting advantage, and the reason a freelancer picks it over an identical
 job. What paid for it in bytecode was the cancellation tier: a charge on a
 client's own cancellation count, which had nobody on the other end of it. The
 applicant fee, which does, is untouched.
-Everything around it is real; the return is a sponsorship and is named as one in
-the contract's first paragraph rather than dressed up as trading fees. Mainnet
-gets the v4 adapter against a real pool, and the deploy script refuses to run
-anywhere but chain 5042002 so the two cannot be confused.
+The one caveat left is liquidity, not code: a testnet pool has no trade flow,
+so the fees a position earns there are near zero. The mechanism is real and
+on-chain; the yield it produces on a testnet is small because nobody is trading
+against it, and that is a different sentence from "the venue is a stub".
 
 **Self-dealing is blocked on-chain.** You cannot fund an escrow naming yourself
 the freelancer, award your own open job to yourself, or have an Autopilot
@@ -557,11 +563,12 @@ that asset back, so providing two-sided liquidity would mean swapping half the
 principal — and a swap can lose money. The range sits entirely to one side of
 the price, and `configurePool` rejects a range that straddles it.
 
-**No venue is attached to the live escrow, on purpose.** Pointing an escrow at a
-yield venue is a decision about somebody else's capital and should be a
-deliberate transaction, not a side effect of a deploy. Uniswap v4 also cannot
-run on Arc *testnet*: PoolManager takes its lock with `TSTORE`, so it needs a
-cancun chain. That is Arc mainnet, which opens 2026-09-16.
+**Attaching a venue is its own transaction, on purpose.** Pointing an escrow at
+a yield venue is a decision about somebody else's capital and should be
+deliberate rather than a side effect of a deploy — which is why
+`DeployYield.s.sol` configures no venue at all and
+`DeployYieldArbitrum.s.sol`, which does, is a separate script that names the
+pool it is attaching.
 
 **The hire loop no longer needs the subgraph.** It used to be gated on one, so
 with `GRAPH_URL` unset nothing was ever scored or hired and the daemon looked
@@ -569,10 +576,10 @@ merely idle. Single-escrow reads now fall back to the chain, and the subgraph is
 what makes the loop fast rather than what makes it work.
 
 **The binding constraint is the free RPC, and it is worth naming.** Subgraph
-Studio returns 429 under ordinary use and `rpc.testnet.arc.network` rate-limits
-a plain `eth_call`. Neither is a code problem, but both are where this app's
-worst bugs came from — not because a read failed, but because of what the code
-did next.
+Studio returns 429 under ordinary use, and the chain this was built on before
+rate-limited a plain `eth_call`. Neither is a code problem, but both are where
+this app's worst bugs came from — not because a read failed, but because of
+what the code did next.
 
 A failed read returning zero is indistinguishable from a real zero, and that one
 shape has produced, at various times, an empty job board, a freelancer's
@@ -584,9 +591,9 @@ not know.
 So the rule the codebase now holds to, and tests: **an unavailable source is not
 an empty answer.** A read that cannot reach its source says so, the screen says
 so, and the retry happens on its own. Where a batch can replace N requests it
-does — Arc has multicall3 at the canonical address, which neither chain
-definition declared until it was measured, so every batched read in the app had
-been silently falling back to a loop.
+does — multicall3 sits at the canonical address on both chains, and neither
+chain definition declared it until it was measured, so every batched read in the
+app had been silently falling back to a loop.
 
 A paid endpoint removes the pressure. It does not remove the requirement, which
 is why the handling is the part that got the tests.
@@ -598,7 +605,8 @@ is why the handling is the part that got the tests.
 - [ ] Deploy the subgraph to Subgraph Studio on Arbitrum Sepolia
 - [x] Deploy the yield controller carrying the 60/40 split, and attach a venue
 - [ ] Size a job so the freelancer's share is reachable — see Status
-- [ ] Arc mainnet deployment, and attach the v4 adapter to a live pool there
+- [x] Attach the v4 adapter to a live pool on the real PoolManager
+- [ ] Arbitrum One deployment
 - [x] Host the Autopilot daemon on an always-on container with a persistent volume
 - [x] Broaden the daemon's test suite past the four modules that move money — 12 modules, 179 tests
 - [x] Notifications raised by the agent, not only by a browser that happens to be open
