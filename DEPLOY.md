@@ -41,6 +41,45 @@ deploy.**
 
 ---
 
+## Running the whole thing locally
+
+Proven end to end on Arbitrum Sepolia — browser → Vite → daemon → SQLite, with
+nothing stubbed. The daemon needs almost nothing to stand up; the keys it is
+missing disable features and it says which, rather than failing to boot.
+
+```bash
+# 1. agent/daemon/.env — enough to boot and read the chain
+cat > agent/daemon/.env <<'ENV'
+ARB_RPC_URL=https://sepolia-rollup.arbitrum.io/rpc
+JOURNEYMAN_CONTRACT_ADDRESS=0x5128B3E2a20d483f68834b26505aFD7457C282dc
+USDC_ADDRESS=0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d
+JOURNEYMAN_DEPLOY_BLOCK=309527684
+PORT=8799
+ENV
+(cd agent/daemon && npm start)      # creates data/journeyman.db on first boot
+
+# 2. Demo rows for the decision log. Local SQLite only — nothing on a chain.
+node scripts/seed-local-demo.mjs
+
+# 3. app/.env, then the dev server
+#    VITE_AGENT_API_URL=http://localhost:8799 is what un-gates Autopilot
+(cd app && npm run dev -- --port 5174)
+
+# 4. The full browser suite
+(cd app && npm run e2e)             # 43 pass, 5 deferred
+```
+
+Without `CIRCLE_API_KEY` + `CIRCLE_ENTITY_SECRET` it holds no wallet and signs
+nothing; without `GROQ_API_KEY` it makes no hiring decision; without `API_URL`
+the notification bell never fires. It logs each of those on boot.
+
+Watch the first lines it prints. `disputeBackfill` running to `done` is the
+windowed log walk completing — the one that was sized for a chain producing
+half as many blocks per second and silently covered a third of the day it
+claimed.
+
+---
+
 ## Rotate the deploy key
 
 `0x3Be7fbBDbC73Fc4731D60EF09c4BA1A94DC58E41` is the deployer, and its private
