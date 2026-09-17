@@ -19,7 +19,7 @@ const apiSecret = process.env.API_SECRET;
 
 // Build a CORS origin matcher that supports:
 //  - FRONTEND_URL: comma-separated list of exact origins, e.g.
-//      https://journeyman-arc.vercel.app,https://my-preview.vercel.app
+//      https://journeyman-work.vercel.app,https://my-preview.vercel.app
 //  - FRONTEND_URL_PATTERN: a regex string to allow preview deployments, e.g.
 //      https://journeyman.*\.vercel\.app
 //  - If neither is set, allow all origins (open for local dev).
@@ -115,7 +115,7 @@ app.use(generalLimiter);
 app.get("/", (_req, res) => {
   res.json({
     service: "Journeyman API",
-    what: "Notifications, messaging, cover letters and file uploads for journeyman-work.vercel.app. The escrow itself lives on Arc, not here.",
+    what: "Notifications, messaging, cover letters and file uploads for journeyman-work.vercel.app. The escrow itself lives on Arbitrum, not here.",
     endpoints: {
       health: "/health",
       notifications: "/v1/notifications?wallet=0x… (Bearer API_SECRET)",

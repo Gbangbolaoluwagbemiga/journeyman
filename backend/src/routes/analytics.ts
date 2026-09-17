@@ -1,18 +1,14 @@
 import { Router } from "express";
-import { createPublicClient, http, formatUnits } from "viem";
+import { formatUnits } from "viem";
+import { publicClient, contractAddress } from "../lib/chain.js";
 
 const router = Router();
 
-// Arc EVM Testnet configuration
-const ARC_TESTNET_RPC = process.env.ARC_RPC_URL || "https://rpc-testnet.arc.network";
-const CONTRACT_ADDRESS = process.env.CONTRACT_ADDRESS as `0x${string}`;
+const CONTRACT_ADDRESS = contractAddress;
 
 // USDC uses 6 decimals, not 18 like ETH
 const USDC_DECIMALS = 6;
 
-const publicClient = createPublicClient({
-  transport: http(ARC_TESTNET_RPC),
-});
 
 // Contract ABI - only the functions we need for analytics
 const JOURNEYMAN_ABI = [

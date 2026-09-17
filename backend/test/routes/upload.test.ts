@@ -54,7 +54,7 @@ let app: express.Express;
 
 beforeAll(async () => {
   process.env.CONTRACT_ADDRESS = "0x000000000000000000000000000000000000aa";
-  process.env.ARC_RPC_URL = "http://127.0.0.1:1"; // never actually dialed — readContract is mocked
+  process.env.ARB_RPC_URL = "http://127.0.0.1:1"; // never actually dialed — readContract is mocked
   const mod = await import("../../src/routes/upload.js");
   uploadRouter = mod.uploadRouter;
   buildUploadAuthMessage = mod.buildUploadAuthMessage;
@@ -116,7 +116,7 @@ describe("POST /v1/upload/milestone — input validation", () => {
         .field("timestamp", String(Date.now())),
     );
     expect(res.status).toBe(400);
-    expect(res.body.error).toMatch(/valid Arc EVM address/i);
+    expect(res.body.error).toMatch(/valid EVM address/i);
   });
 
   it("rejects a request missing signature/timestamp", async () => {

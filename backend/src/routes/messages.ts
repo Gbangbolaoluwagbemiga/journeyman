@@ -11,7 +11,7 @@ const UUID_RE =
 /**
  * ONE ADDRESS, ONE SPELLING.
  *
- * An Arc address has two equally valid spellings — the checksummed mixed case
+ * An EVM address has two equally valid spellings — the checksummed mixed case
  * a wallet hands you, and lowercase. Every comparison in this file was raw
  * string equality, so the two never met: a client messaged a freelancer from
  * the Browse Freelancers page, where the address comes off the chain
@@ -57,7 +57,7 @@ messagesRouter.post("/", async (req, res) => {
     !sender_address || !EVM_ADDR.test(String(sender_address)) ||
     !recipient_address || !EVM_ADDR.test(String(recipient_address))
   ) {
-    res.status(400).json({ error: "sender_address and recipient_address must be valid Arc EVM addresses (0x…)" });
+    res.status(400).json({ error: "sender_address and recipient_address must be valid EVM addresses (0x…)" });
     return;
   }
 
@@ -109,7 +109,7 @@ messagesRouter.get("/conversation", async (req, res) => {
   const since = String(req.query.since ?? "").trim();
 
   if (!EVM_ADDR.test(a) || !EVM_ADDR.test(b)) {
-    res.status(400).json({ error: "a and b must be valid Arc EVM addresses (0x…)" });
+    res.status(400).json({ error: "a and b must be valid EVM addresses (0x…)" });
     return;
   }
 
@@ -143,7 +143,7 @@ messagesRouter.get("/inbox", async (req, res) => {
 
   const wallet = String(req.query.wallet ?? "").trim();
   if (!EVM_ADDR.test(wallet)) {
-    res.status(400).json({ error: "wallet must be a valid Arc EVM address (0x…)" });
+    res.status(400).json({ error: "wallet must be a valid EVM address (0x…)" });
     return;
   }
   const me = norm(wallet);
@@ -207,7 +207,7 @@ messagesRouter.get("/unread-count", async (req, res) => {
 
   const wallet = String(req.query.wallet ?? "").trim();
   if (!EVM_ADDR.test(wallet)) {
-    res.status(400).json({ error: "wallet must be a valid Arc EVM address (0x…)" });
+    res.status(400).json({ error: "wallet must be a valid EVM address (0x…)" });
     return;
   }
 
@@ -238,7 +238,7 @@ messagesRouter.patch("/conversation/read", async (req, res) => {
   const wallet = String(req.query.wallet ?? "").trim();
 
   if (!EVM_ADDR.test(a) || !EVM_ADDR.test(b) || !EVM_ADDR.test(wallet)) {
-    res.status(400).json({ error: "a, b, and wallet must be valid Arc EVM addresses (0x…)" });
+    res.status(400).json({ error: "a, b, and wallet must be valid EVM addresses (0x…)" });
     return;
   }
 
@@ -277,7 +277,7 @@ messagesRouter.patch("/:id/read", async (req, res) => {
 
   const wallet = String(req.query.wallet ?? "").trim();
   if (!EVM_ADDR.test(wallet)) {
-    res.status(400).json({ error: "wallet must be a valid Arc EVM address (0x…)" });
+    res.status(400).json({ error: "wallet must be a valid EVM address (0x…)" });
     return;
   }
 

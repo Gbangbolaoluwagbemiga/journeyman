@@ -1,20 +1,20 @@
 /**
- * EIP-2771 Gasless Relayer for Arc EVM
+ * EIP-2771 Gasless Relayer
  *
  * The frontend builds and signs an EIP-712 typed-data payload using the
  * user's wallet (zero gas cost for the user).  This route verifies the
  * signature, wraps it into a forwarder `execute()` call, and submits it
- * to the Arc network using a funded relayer wallet.
+ * to the network using a funded relayer wallet.
  *
  * Required env vars:
  *   RELAYER_PRIVATE_KEY      – private key of the gas-paying relayer wallet
- *   ARC_RPC_URL              – Arc EVM JSON-RPC endpoint
+ *   ARB_RPC_URL              – JSON-RPC endpoint (defaults to Arbitrum Sepolia)
  *   TRUSTED_FORWARDER_ADDRESS – deployed ERC-2771 forwarder contract address
  *
  * EIP-712 domain expected from the frontend:
  *   name: "JourneymanForwarder"
  *   version: "1"
- *   chainId: <Arc chain ID>
+ *   chainId: <chain ID>
  *   verifyingContract: <TRUSTED_FORWARDER_ADDRESS>
  */
 
@@ -45,12 +45,12 @@ const FORWARD_REQUEST_TYPES = {
 
 function getRelayerConfig() {
   const privateKey = process.env.RELAYER_PRIVATE_KEY?.trim();
-  const rpcUrl = process.env.ARC_RPC_URL?.trim();
+  const rpcUrl = process.env.ARB_RPC_URL?.trim();
   const forwarderAddress = process.env.TRUSTED_FORWARDER_ADDRESS?.trim() as `0x${string}` | undefined;
 
   if (!privateKey || !rpcUrl || !forwarderAddress) {
     throw new Error(
-      "Gasless relayer is not fully configured. Set RELAYER_PRIVATE_KEY, ARC_RPC_URL, and TRUSTED_FORWARDER_ADDRESS in backend/.env",
+      "Gasless relayer is not fully configured. Set RELAYER_PRIVATE_KEY, ARB_RPC_URL, and TRUSTED_FORWARDER_ADDRESS in backend/.env",
     );
   }
 
@@ -70,7 +70,7 @@ function getRelayerConfig() {
  * Body (JSON):
  *   request   – ForwardRequest struct { from, to, value, gas, nonce, data }
  *   signature – EIP-712 signature (hex string) from the user's wallet
- *   chainId   – Arc chain ID (number) – used to build the EIP-712 domain
+ *   chainId   – chain ID (number) – used to build the EIP-712 domain
  *
  * Response:
  *   { txHash: string }

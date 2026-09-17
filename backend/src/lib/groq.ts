@@ -31,7 +31,7 @@ export async function generateMilestoneSuggestions(input: {
   const idx =
     input.milestoneIndex !== null ? input.milestoneIndex + 1 : "new / unspecified";
 
-  const system = `You are helping structure freelance escrow milestones on Arc EVM (Journeyman).
+  const system = `You are helping structure freelance escrow milestones on Journeyman.
 Return ONLY valid JSON with this exact shape (no markdown):
 {"suggestions":["string","string","string"]}
 Each suggestion is one milestone DESCRIPTION only (deliverables, acceptance criteria, no token amounts).

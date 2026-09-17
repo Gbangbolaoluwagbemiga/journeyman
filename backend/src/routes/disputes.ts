@@ -27,14 +27,13 @@
  * everyone would protect nothing.
  */
 import { Router } from "express";
-import { createPublicClient, http, verifyMessage, parseAbiItem } from "viem";
+import { verifyMessage, parseAbiItem } from "viem";
+import { publicClient, contractAddress } from "../lib/chain.js";
 import { getSupabase } from "../lib/supabase.js";
 
 export const disputesRouter = Router();
 
-const ARC_RPC_URL = process.env.ARC_RPC_URL || "https://rpc.drpc.testnet.arc.network";
-const CONTRACT_ADDRESS = process.env.CONTRACT_ADDRESS as `0x${string}` | undefined;
-const publicClient = createPublicClient({ transport: http(ARC_RPC_URL) });
+const CONTRACT_ADDRESS: `0x${string}` | undefined = contractAddress;
 
 const DISPUTE_RESOLVED = parseAbiItem(
   "event DisputeResolved(uint256 indexed escrowId, uint256 indexed milestoneIndex, address indexed arbiter, uint256 freelancerAmount, uint256 clientAmount, uint256 timestamp)",

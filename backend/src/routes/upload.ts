@@ -1,6 +1,7 @@
 import { Router } from "express";
 import multer from "multer";
-import { createPublicClient, http, verifyMessage } from "viem";
+import { verifyMessage } from "viem";
+import { publicClient, contractAddress } from "../lib/chain.js";
 import { getSupabase } from "../lib/supabase.js";
 import { attempt, isUnreachable } from "../lib/degrade.js";
 
@@ -41,12 +42,10 @@ const upload = multer({
 // that wallet must actually be the depositor or beneficiary of the escrow.
 // Jobs still open for applications (no beneficiary yet) accept any signed
 // wallet, since anyone is allowed to apply and attach a portfolio file.
-const ARC_RPC_URL = process.env.ARC_RPC_URL || "https://rpc.drpc.testnet.arc.network";
-const CONTRACT_ADDRESS = process.env.CONTRACT_ADDRESS as `0x${string}` | undefined;
+const CONTRACT_ADDRESS: `0x${string}` | undefined = contractAddress;
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 const UPLOAD_AUTH_MAX_AGE_MS = 5 * 60 * 1000; // 5 minutes
 
-const publicClient = createPublicClient({ transport: http(ARC_RPC_URL) });
 
 const GET_ESCROW_ABI = [
   {
@@ -120,7 +119,7 @@ uploadRouter.post(
       return;
     }
     if (!/^0x[0-9a-fA-F]{40}$/.test(walletAddress)) {
-      res.status(400).json({ error: "wallet_address must be a valid Arc EVM address (0x…)" });
+      res.status(400).json({ error: "wallet_address must be a valid EVM address (0x…)" });
       return;
     }
     if (!signature || !timestamp) {
