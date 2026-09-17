@@ -6,7 +6,7 @@ import { WagmiAdapter } from "@reown/appkit-adapter-wagmi";
 import { defineChain } from "viem";
 import type { AppKitNetwork } from "@reown/appkit/networks";
 
-// ─── Arc Testnet — defined as a viem Chain ────────────────────────────────────
+// ─── Arbitrum Sepolia — defined as a viem Chain ───────────────────────────────
 export const arbitrumSepolia = defineChain({
   id: 421614,
   name: "Arbitrum Sepolia",
@@ -23,7 +23,7 @@ export const arbitrumSepolia = defineChain({
    * viem will not use a contract the chain has not declared, and the failure is
    * silent: `client.multicall(...)` throws ChainDoesNotSupportContract and every
    * call site falls into its fallback, which in this app is the sequential loop
-   * the batch existed to replace. On Arc that went unnoticed for weeks —
+   * the batch existed to replace. On the previous chain that went unnoticed for weeks —
    * escrows, milestones, the analytics page and the autopilot badge all doing
    * one request per item while the comments around them explained why they
    * didn't. Nothing looked broken, because the fallbacks worked.
@@ -57,7 +57,7 @@ createAppKit({
   defaultNetwork: arbitrumSepoliaReown,
   metadata: {
     name: "Journeyman",
-    description: "Milestone-based freelancer escrow on Arc EVM",
+    description: "Milestone-based freelancer escrow on Arbitrum",
     url: typeof window !== "undefined" ? window.location.origin : "https://journeyman.app",
     icons: ["/favicon.ico"],
   },

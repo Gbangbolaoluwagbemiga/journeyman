@@ -230,7 +230,7 @@ export default function FreelancersPage() {
           <p className="text-muted-foreground max-w-xl mx-auto">
             Discover verified on-chain freelancers. Every profile shows real
             completed projects and ratings — no fake reviews, all verifiable on
-            the Arc blockchain.
+            the Arbitrum blockchain.
           </p>
         </motion.div>
 

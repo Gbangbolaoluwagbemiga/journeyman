@@ -139,7 +139,7 @@ const quoteDepositMock = vi.fn();
 describe("paying for extra stages", () => {
   let cs: InstanceType<typeof ContractService>;
   const write = vi.fn();
-  const USDC = "0x3600000000000000000000000000000000000000";
+  const USDC = "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d";
   const ME = "0x3Be7fbBDbC73Fc4731D60EF09c4BA1A94DC58E41";
 
   beforeEach(() => {

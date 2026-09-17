@@ -96,7 +96,7 @@ export async function postRewriteText(body: { text: string }): Promise<{
 /**
  * Submit a user-signed EIP-2771 meta-transaction to the backend relayer.
  * The relayer wraps it in a `MinimalForwarder.execute()` call and pays gas.
- * Used for gasless operations such as job applications on Arc.
+ * Used for gasless operations such as job applications.
  */
 export async function submitGaslessTransaction(body: {
   request: {

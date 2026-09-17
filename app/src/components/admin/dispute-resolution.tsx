@@ -118,7 +118,7 @@ export function DisputeResolution({ onDisputeResolved }: DisputeResolutionProps)
                 amtWei = escrowTotalWei;
               }
               
-              // USDC uses 6 decimals on Arc Testnet
+              // USDC uses 6 decimals
               const displayAmount = Number(formatUnits(amtWei, 6));
               
               found.push({

@@ -104,7 +104,7 @@ export default function AutopilotComposePage() {
     fetchWhitelistedTokens(ac.signal)
       .then((list) => {
         setTokens(list);
-        // Default to the chain's own currency when it is one of them; on Arc
+        // Default to the chain's own currency when it is one of them; on this chain
         // that is USDC, which is what a client means by "dollars" anyway.
         setPayToken((prev) => prev || (list.find((t) => t.native) ?? list[0])?.address || "");
       })
@@ -242,7 +242,7 @@ export default function AutopilotComposePage() {
         // Empty falls through to the hook's default rather than sending
         // address(0), which the contract reads as the native currency.
         ...(payToken ? { token: payToken } : {}),
-        // Amounts are USDC with 6 decimals on Arc. Rounded rather than floored
+        // Amounts are USDC with 6 decimals. Rounded rather than floored
         // so a milestone of 12.005 does not quietly lose its last cent and take
         // the sum out of agreement with the total.
         milestones: brief.milestones.map(

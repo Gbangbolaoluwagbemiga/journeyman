@@ -289,7 +289,7 @@ export function ProjectDetailsStep({
             ) : (
               <p className="text-xs text-muted-foreground mt-1">
                 Sends this job directly to one freelancer instead of listing it
-                publicly. Valid Arc EVM address (0x…) required.
+                publicly. Valid wallet address (0x…) required.
               </p>
             )}
           </div>
@@ -305,7 +305,7 @@ export function ProjectDetailsStep({
               className="rounded w-4 h-4"
             />
             <Label htmlFor="useNativeToken" className="cursor-pointer ml-1">
-              Use Arc Testnet USDC (Recommended)
+              Use USDC (Recommended)
             </Label>
           </div>
 

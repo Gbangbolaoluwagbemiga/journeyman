@@ -27,8 +27,8 @@
  * 0x8289…c423. The balance is the number people actually glance up to check.
  *
  * The rest went: the network icon, because this app speaks to one chain and a
- * chain badge is noise until there are two; the word USDC, because Arc's native
- * currency is USDC and "$" says it in one character; and the truncated address,
+ * chain badge is noise until there are two; the word USDC, because every figure
+ * in the product is USDC and "$" says it in one character; and the truncated address,
  * because Reown's account modal already shows it in full with a copy button,
  * one click behind this. It stays in the tooltip and the accessible name, so
  * nobody who needs it has to go looking.

@@ -1,14 +1,18 @@
 import { createContext, useContext, useState, type ReactNode } from "react";
-import { useAccount, useDisconnect, useBalance } from "wagmi";
-import { getContract as getViemContract } from "viem";
+import { useAccount, useDisconnect, useBalance, useReadContracts } from "wagmi";
+import { getContract as getViemContract, formatUnits, erc20Abi } from "viem";
 import { useWalletClient, usePublicClient } from "wagmi";
 import { useAppKit } from "@reown/appkit/react";
+import { CONTRACTS } from "@/lib/web3/chain-config";
 
 interface Web3ContextType {
   wallet: {
     address: string | null;
     isConnected: boolean;
+    /** USDC — what jobs are priced and paid in. This is "do they have money". */
     balance: string;
+    /** ETH — what transactions cost. This is "can they sign". */
+    gasBalance: string;
     chainId?: number;
   };
   connectWallet: () => Promise<void>;
@@ -34,7 +38,24 @@ export function Web3Provider({ children }: { children: ReactNode }) {
    * Fifteen seconds is slow enough to be invisible against one balance read and
    * fast enough that nobody reaches for the reload button.
    */
-  const { data: balanceData, refetch: refetchBalance } = useBalance({
+  /*
+   * TWO BALANCES, BECAUSE THIS CHAIN HAS TWO ASSETS.
+   *
+   * There was one read here, with no `token`, so it returned the NATIVE
+   * currency — and every caller labelled it USDC. That was correct on the chain
+   * this was built for, where the native currency WAS USDC. On Arbitrum the
+   * native currency is ETH, so the header advertised a gas balance in dollars
+   * and Create Job refused to post a 5 USDC brief from a wallet holding 500
+   * USDC, on the grounds that it only had 0.03 — of something else.
+   */
+  const { data: usdcData, refetch: refetchUsdc } = useReadContracts({
+    contracts: [
+      { address: CONTRACTS.USDC, abi: erc20Abi, functionName: "balanceOf", args: [address ?? "0x0"] },
+      { address: CONTRACTS.USDC, abi: erc20Abi, functionName: "decimals" },
+    ],
+    query: { enabled: Boolean(address), refetchInterval: 15_000 },
+  });
+  const { data: gasData, refetch: refetchGas } = useBalance({
     address,
     query: { refetchInterval: 15_000 },
   });
@@ -59,7 +80,7 @@ export function Web3Provider({ children }: { children: ReactNode }) {
   const disconnectWallet = () => disconnect();
 
   const refreshBalance = async () => {
-    await refetchBalance();
+    await Promise.all([refetchUsdc(), refetchGas()]);
   };
 
   return (
@@ -68,9 +89,14 @@ export function Web3Provider({ children }: { children: ReactNode }) {
         wallet: {
           address: address || null,
           isConnected,
-          balance: balanceData
-            ? (Number(balanceData.value) / 1e18).toFixed(2)
-            : "0",
+          /* formatUnits off the token's own decimals rather than a hardcoded
+             divisor: USDC is 6 here and was 18 as a native currency, and that
+             one constant is the difference between $5 and $0.000000000000005. */
+          balance:
+            usdcData?.[0]?.status === "success" && usdcData?.[1]?.status === "success"
+              ? formatUnits(usdcData[0].result as bigint, usdcData[1].result as number)
+              : "0",
+          gasBalance: gasData ? formatUnits(gasData.value, gasData.decimals) : "0",
           chainId,
         },
         connectWallet,

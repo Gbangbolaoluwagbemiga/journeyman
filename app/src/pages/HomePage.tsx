@@ -117,7 +117,7 @@ export default function HomePage() {
             <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full glass border border-primary/20 mb-6">
               <div className="h-2 w-2 rounded-full bg-primary animate-pulse" />
               <span className="text-sm font-medium">
-                Powered by Arc Testnet
+                Powered by Arbitrum
               </span>
             </div>
 
@@ -314,7 +314,7 @@ export default function HomePage() {
                     <p className="text-muted-foreground leading-relaxed">
                       Browse on-chain profiles with real ratings, completed
                       projects, and badge levels — no fake portfolios, every
-                      stat is verified directly on the Arc blockchain.
+                      stat is verified directly on the Arbitrum blockchain.
                     </p>
                   </div>
 

@@ -4,7 +4,7 @@
  * viem throws magnificently detailed errors. Rendered straight into a toast they
  * look like this:
  *
- *   User rejected the request. Request Arguments: chain: Arc EVM Testnet (id:
+ *   User rejected the request. Request Arguments: chain: Arbitrum Sepolia (id:
  *   421614) from: 0x3Be7… to: 0x370e… data: 0x0735ab8600000000000000000000…
  *   Contract Call: address: 0x370e… Version: viem@2.49.0
  *
@@ -84,7 +84,7 @@ const PATTERNS: readonly [RegExp, string][] = [
   ],
   [
     /chain mismatch|does not match the target chain|ChainMismatchError|wrong network/i,
-    "Your wallet is on the wrong network. Switch it to Arc and try again.",
+    "Your wallet is on the wrong network. Switch it to Arbitrum Sepolia and try again.",
   ],
   [
     /timed out|timeout|took too long/i,

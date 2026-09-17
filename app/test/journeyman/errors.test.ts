@@ -6,7 +6,7 @@ import { humanizeError } from "@/lib/journeyman/errors";
  * Every word true, none of it useful, and the one sentence that mattered was
  * buried in front of a wall the eye slides off.
  */
-const VIEM_REJECTION = `User rejected the request. Request Arguments: chain: Arc EVM Testnet (id: 421614) from: 0x3Be7fbBDbC73Fc4731D60EF09c4BA1A94DC58E41 to: 0x370e1517Fe56fF3ebCFc3D7ed08563fB88910C11 data: 0x0735ab8600000000000000000000000000000000000000000000000000000000 Contract Call: address: 0x370e1517Fe56fF3ebCFc3D7ed08563fB88910C11 Version: viem@2.49.0`;
+const VIEM_REJECTION = `User rejected the request. Request Arguments: chain: Arbitrum Sepolia (id: 421614) from: 0x3Be7fbBDbC73Fc4731D60EF09c4BA1A94DC58E41 to: 0x370e1517Fe56fF3ebCFc3D7ed08563fB88910C11 data: 0x0735ab8600000000000000000000000000000000000000000000000000000000 Contract Call: address: 0x370e1517Fe56fF3ebCFc3D7ed08563fB88910C11 Version: viem@2.49.0`;
 
 describe("wallet failures", () => {
   it("says you cancelled it, and nothing else", () => {
@@ -28,7 +28,7 @@ describe("wallet failures", () => {
   it("tells someone on the wrong network what to do about it", () => {
     expect(
       humanizeError(new Error("ChainMismatchError: chain does not match the target chain")),
-    ).toMatch(/switch it to arc/i);
+    ).toMatch(/switch it to arbitrum sepolia/i);
   });
 
   it("separates an empty balance from a rejection", () => {
@@ -79,7 +79,7 @@ describe("anything else", () => {
    */
   it("cuts an unknown error at the point it stops being about the user", () => {
     const out = humanizeError(
-      new Error("Something odd happened. Request Arguments: chain: Arc data: 0xdeadbeef"),
+      new Error("Something odd happened. Request Arguments: chain: Arbitrum Sepolia data: 0xdeadbeef"),
     );
     expect(out).toBe("Something odd happened.");
   });

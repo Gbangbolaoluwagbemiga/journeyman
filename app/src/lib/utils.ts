@@ -7,22 +7,32 @@ export function cn(...inputs: ClassValue[]) {
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 
-/** USDC contract on Arc Testnet — set VITE_USDC_TOKEN_CONTRACT in .env */
-const USDC_ADDRESS = (
-  (typeof import.meta !== "undefined" ? (import.meta as any).env?.VITE_USDC_TOKEN_CONTRACT : undefined) ?? ""
+/** USDC on Arbitrum Sepolia — override with VITE_USDC_TOKEN_CONTRACT. */
+export const USDC_ADDRESS = (
+  (typeof import.meta !== "undefined" ? (import.meta as any).env?.VITE_USDC_TOKEN_CONTRACT : undefined) ??
+  "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d"
 ).trim().toLowerCase();
 
 /**
  * Resolve token metadata from its contract address.
- * address(0) = native USDC on Arc Testnet (6 decimals)
- * Other ERC-20 tokens can be added as needed
+ *
+ * ADDRESS(0) IS ETH HERE. IT USED TO BE USDC.
+ *
+ * On the chain this was built for, the native currency WAS USDC, so address(0)
+ * meant six-decimal dollars and this function said so. Arbitrum's native
+ * currency is ETH with eighteen decimals, and the contract still accepts
+ * address(0) escrows without whitelisting them — see the NATIVE_TOKEN branch in
+ * Journeyman.createEscrow. So a native escrow here holds ETH, and labelling it
+ * USDC at six decimals would render one ether as "1,000,000,000,000 USDC".
+ *
+ * Every caller that means "our settlement currency" should say USDC explicitly;
+ * formatUsdc below is the short way to do it.
  */
 function tokenMeta(tokenAddress?: string | null): { symbol: string; decimals: number } {
   const addr = (tokenAddress ?? "").toLowerCase();
-  // Native token on Arc Testnet is USDC (6 decimals)
-  if (!addr || addr === ZERO_ADDRESS) return { symbol: "USDC", decimals: 6 };
-  if (USDC_ADDRESS && addr === USDC_ADDRESS) return { symbol: "USDC", decimals: 6 };
-  // Unknown ERC-20: assume 18 decimals, show shortened address
+  if (!addr || addr === ZERO_ADDRESS) return { symbol: "ETH", decimals: 18 };
+  if (addr === USDC_ADDRESS) return { symbol: "USDC", decimals: 6 };
+  // Unknown ERC-20: assume 18 decimals, which is the common case.
   return { symbol: "tokens", decimals: 18 };
 }
 
@@ -59,12 +69,18 @@ export function formatTokenAmount(
 }
 
 /**
- * Convenience wrapper — formats USDC (native, 6 decimals).
- * For other ERC-20 amounts use formatTokenAmount(amount, tokenAddress).
+ * Format an amount of the settlement currency — USDC, 6 decimals.
+ *
+ * This is what almost every figure in the product is: a budget, a milestone, a
+ * payout, a total earned. It passed ZERO_ADDRESS to mean "the native currency,
+ * which is USDC", and that stopped being true at the chain boundary.
  */
-export function formatEth(weiAmount: string | number | bigint | undefined | null): string {
-  return formatTokenAmount(weiAmount, ZERO_ADDRESS);
+export function formatUsdc(amount: string | number | bigint | undefined | null): string {
+  return formatTokenAmount(amount, USDC_ADDRESS);
 }
+
+/** @deprecated misleading name — it never formatted ether. Use formatUsdc. */
+export const formatEth = formatUsdc;
 
 /**
  * Convert a raw amount to a plain number using the token's decimals.
@@ -82,9 +98,9 @@ export function rawToNumber(
   }
 }
 
-/** @deprecated use rawToNumber instead */
-export function weiToEth(weiAmount: string | number | bigint | undefined | null): number {
-  return rawToNumber(weiAmount, ZERO_ADDRESS);
+/** @deprecated use rawToNumber with an explicit token address instead. */
+export function weiToEth(amount: string | number | bigint | undefined | null): number {
+  return rawToNumber(amount, USDC_ADDRESS);
 }
 
 /**

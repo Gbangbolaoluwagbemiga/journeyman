@@ -11,9 +11,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useWeb3 } from "@/contexts/web3-context";
 import { useToast } from "@/hooks/use-toast";
 import { CONTRACTS } from "@/lib/web3/config";
+import { DEPLOY_BLOCK } from "@/lib/web3/chain-config";
 import { FileText, Upload, ExternalLink, User, Clock, Loader2, MessageSquare } from "lucide-react";
 import { motion } from "framer-motion";
-import { parseAbiItem } from "viem";
+import { parseAbiItem, type GetLogsReturnType } from "viem";
+
+const EVIDENCE_SUBMITTED = parseAbiItem(
+  "event EvidenceSubmitted(uint256 indexed escrowId, uint256 indexed milestoneIndex, address indexed submitter, string cid)",
+);
 
 interface EvidenceEntry {
   escrowId: string;
@@ -45,6 +50,7 @@ export function DisputeEvidence({
   const publicClient = usePublicClient();
   
   const [evidence, setEvidence] = useState<EvidenceEntry[]>([]);
+  const [lookupFailed, setLookupFailed] = useState(false);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [evidenceCid, setEvidenceCid] = useState("");
@@ -59,27 +65,43 @@ export function DisputeEvidence({
     try {
       if (!publicClient) return;
 
-      // Get current block number
+      setLookupFailed(false);
       const currentBlock = await publicClient.getBlockNumber();
-      
-      // Arc Testnet RPC limit: max 10000 blocks per query
-      // Search last 9000 blocks to stay under limit
-      const fromBlock = currentBlock > 9000n ? currentBlock - 9000n : 0n;
 
-      // Fetch EvidenceSubmitted events for this escrow and milestone
-      const logs = await publicClient.getLogs({
-        address: CONTRACTS.JOURNEYMAN_ESCROW as `0x${string}`,
-        event: parseAbiItem('event EvidenceSubmitted(uint256 indexed escrowId, uint256 indexed milestoneIndex, address indexed submitter, string cid)'),
-        args: {
-          escrowId: BigInt(escrowId),
-          milestoneIndex: BigInt(milestoneIndex),
-        },
-        fromBlock: fromBlock,
-        toBlock: 'latest',
-      });
+      /*
+       * HOW FAR BACK "RECENTLY" IS, IN BLOCKS.
+       *
+       * This looked back 9,000 blocks, sized for a chain producing 1.94 of them
+       * a second. Arbitrum Sepolia produces 4.01 — 346,070 a day — so 9,000
+       * blocks is THIRTY-SEVEN MINUTES. Evidence filed in the morning was
+       * invisible by lunchtime, and the arbiter reviewing the dispute was not
+       * told the window had run out. They were shown "No evidence submitted
+       * yet", which is a different claim entirely, and one they might rule on.
+       *
+       * It walks back to the deployment now, in windows this RPC answers
+       * comfortably. One request today; a handful once the contract is old.
+       */
+      const WINDOW = 400_000n;
+      const logs: GetLogsReturnType<typeof EVIDENCE_SUBMITTED> = [];
+      for (let to = currentBlock; to >= DEPLOY_BLOCK; to -= WINDOW) {
+        const from = to > DEPLOY_BLOCK + WINDOW ? to - WINDOW + 1n : DEPLOY_BLOCK;
+        const batch = await publicClient.getLogs({
+          address: CONTRACTS.JOURNEYMAN_ESCROW as `0x${string}`,
+          event: EVIDENCE_SUBMITTED,
+          args: {
+            escrowId: BigInt(escrowId),
+            milestoneIndex: BigInt(milestoneIndex),
+          },
+          fromBlock: from,
+          toBlock: to,
+        });
+        logs.push(...batch);
+        if (from === DEPLOY_BLOCK) break;
+      }
 
       const entries: EvidenceEntry[] = [];
       for (const log of logs) {
+        if (log.blockNumber === null) continue; // pending: not yet a fact
         const block = await publicClient.getBlock({ blockNumber: log.blockNumber });
         entries.push({
           escrowId: escrowId,
@@ -95,8 +117,16 @@ export function DisputeEvidence({
       entries.sort((a, b) => a.timestamp - b.timestamp);
       setEvidence(entries);
     } catch (error) {
+      /*
+       * A FAILED LOOKUP IS NOT AN EMPTY ONE.
+       *
+       * This used to swallow the error and fall through to "No evidence
+       * submitted yet" — on the screen an arbiter uses to decide who gets paid.
+       * Saying nothing was filed when we could not check is the one wrong
+       * answer this component can give that costs somebody money.
+       */
       console.error("Failed to fetch evidence:", error);
-      // Don't show error to user, just show empty state
+      setLookupFailed(true);
     } finally {
       setLoading(false);
     }
@@ -219,6 +249,17 @@ export function DisputeEvidence({
           <div className="flex items-center justify-center py-8">
             <Loader2 className="h-6 w-6 animate-spin text-primary" />
             <span className="ml-3">Loading evidence...</span>
+          </div>
+        ) : lookupFailed ? (
+          <div className="text-center py-8 border rounded-lg border-destructive/40 text-destructive">
+            <FileText className="h-10 w-10 mx-auto mb-3 opacity-60" />
+            <p>Could not read the evidence record</p>
+            <p className="text-sm">
+              This is not the same as no evidence having been filed — do not rule on it.
+            </p>
+            <Button variant="outline" size="sm" className="mt-3" onClick={() => void fetchEvidence()}>
+              Try again
+            </Button>
           </div>
         ) : evidence.length === 0 ? (
           <div className="text-center py-8 text-muted-foreground border rounded-lg">

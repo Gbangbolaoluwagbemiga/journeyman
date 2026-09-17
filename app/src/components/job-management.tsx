@@ -49,7 +49,7 @@ interface JobManagementProps {
   onUpdate?: () => void;
 }
 
-const DECIMALS = 6; // Arc USDC
+const DECIMALS = 6; // USDC
 
 function weiToUsdc(wei: string): number {
   return parseFloat(wei) / 10 ** DECIMALS;

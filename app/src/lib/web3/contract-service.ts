@@ -8,6 +8,7 @@ import {
 } from "viem";
 import { arbitrumSepolia } from "@/providers/WalletProvider";
 import { CONTRACTS } from "./config";
+import { DEPLOY_BLOCK } from "./chain-config";
 import JourneymanABI from "./JourneymanABI.json";
 
 /** wagmi writeContractAsync — typed as any to stay compatible across wagmi versions */
@@ -206,13 +207,23 @@ export class ContractService {
       // eslint-disable-next-line no-console
       console.warn(`[journeyman:milestone-recovery] esc=${escrowId} ${msg}`, extra ?? "");
     try {
-      // The public drpc RPC caps eth_getLogs ranges aggressively (sometimes
-      // as little as 1k blocks). Walk backwards in small chunks and fall back
-      // to even smaller windows if the call is rejected.
+      /*
+       * WINDOW SIZES ARE A PROPERTY OF THE ENDPOINT, AND FLOORS ARE A PROPERTY
+       * OF THE CONTRACT. NEITHER IS A ROUND NUMBER SOMEBODY LIKED.
+       *
+       * This walked 1,000 blocks at a time over a 500,000-block ceiling, sized
+       * for an endpoint that capped ranges "sometimes as little as 1k". That is
+       * 500 sequential requests to search what, on Arbitrum Sepolia at 4.01
+       * blocks a second, is only 34 hours of history — so an escrow created the
+       * day before yesterday could not be found, expensively.
+       *
+       * This RPC answers 500,000 in a single call, measured. 100,000 leaves
+       * room, and the floor is the deployment, so the search covers everything
+       * that can possibly exist and lengthens only as the contract ages.
+       */
       const latest = await this.client.getBlockNumber();
-      const CHUNK = 1000n;
-      const MAX_BLOCKS = 500_000n;
-      const minBlock = latest > MAX_BLOCKS ? latest - MAX_BLOCKS : 0n;
+      const CHUNK = 100_000n;
+      const minBlock = DEPLOY_BLOCK;
       let txHash: `0x${string}` | null = null;
       let toBlock = latest;
       let scannedChunks = 0;
@@ -440,9 +451,16 @@ export class ContractService {
       // Get current block number
       const currentBlock = await this.client.getBlockNumber();
       
-      // Arc Testnet RPC limit: max 10000 blocks per query
-      // Search last 9000 blocks to stay under limit
-      const fromBlock = currentBlock > 9000n ? currentBlock - 9000n : 0n;
+      /*
+       * Back to the deployment, not back 9,000 blocks.
+       *
+       * 9,000 blocks is thirty-seven minutes on this chain. The applicant LIST
+       * comes from contract storage above, so a short window did not lose
+       * anybody — it lost their COVER LETTERS, and those entries fell through
+       * to the empty-string branch below. A client would see the right names
+       * attached to nothing, and the scorer would rank them on it.
+       */
+      const fromBlock = DEPLOY_BLOCK;
 
       // Get ApplicationSubmitted events for this escrow
       const { parseEventLogs } = await import('viem');
@@ -1224,7 +1242,7 @@ export class ContractService {
     params: { escrow_id: number; additional_amount: string; depositor: string; milestone_index: number; token?: string },
     write: WagmiWrite
   ): Promise<`0x${string}`> {
-    // Arc Testnet USDC uses 6 decimals
+    // USDC uses 6 decimals
     const amountWei = BigInt(Math.floor(parseFloat(params.additional_amount) * 1e6));
 
     // Get escrow to check token type
@@ -1274,7 +1292,7 @@ export class ContractService {
     params: { escrow_id: number; withdraw_amount: string; depositor: string; milestone_index: number },
     write: WagmiWrite
   ): Promise<`0x${string}`> {
-    // Arc Testnet USDC uses 6 decimals
+    // USDC uses 6 decimals
     const amountWei = BigInt(Math.floor(parseFloat(params.withdraw_amount) * 1e6));
     return write({
       address: this.addr,

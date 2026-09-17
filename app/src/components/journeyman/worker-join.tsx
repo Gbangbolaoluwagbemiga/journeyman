@@ -225,7 +225,7 @@ export function WorkerJoin({ onJoined }: { onJoined: (w: Worker) => void }) {
                 </p>
               )}
               <p className="text-xs text-muted-foreground mt-1.5">
-                You will sign your own transactions, and need gas on Arc to do
+                You will sign your own transactions, and need ETH on Arbitrum Sepolia to do
                 it.
               </p>
             </div>

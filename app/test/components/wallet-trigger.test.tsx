@@ -40,7 +40,7 @@ beforeEach(() => {
 describe("the connected wallet control", () => {
   it("shows the balance as money, not as a token amount", () => {
     render(<WalletButton />);
-    // "$108.28" rather than "108.28 USDC" — Arc's native currency IS USDC, and
+    // "$108.28" rather than "108.28 USDC" — every figure in the product is USDC, and
     // the symbol says it in one character instead of five.
     expect(screen.getByText("$108.28")).toBeInTheDocument();
   });

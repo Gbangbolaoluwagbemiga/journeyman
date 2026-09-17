@@ -23,16 +23,18 @@ const USDC_ADDRESS = (
   (import.meta.env.VITE_USDC_TOKEN_CONTRACT as string | undefined) ?? ""
 ).trim() as `0x${string}` | "";
 
-// Native USDC has 6 decimals on Arc Testnet
+// Amounts are USDC, 6 decimals. Gas is ETH and is never an amount on this page.
 function parseTokenAmount(amount: string, tokenAddress: string | undefined): bigint {
   // Validate amount
   if (!amount || amount === "0" || isNaN(Number(amount))) {
     throw new Error("Invalid amount: must be greater than 0");
   }
 
-  // Native token (address(0)) is USDC with 6 decimals on Arc Testnet
+  /* address(0) is the chain's own currency — ETH here, 18 decimals. It used to
+     be USDC, which is why this branch read 6. Nothing on this page creates a
+     native escrow, but a wrong constant in a live branch is a loaded gun. */
   if (!tokenAddress || tokenAddress === "0x0000000000000000000000000000000000000000") {
-    return parseUnits(amount, 6);
+    return parseEther(amount);
   }
   // USDC — 6 decimals
   if (USDC_ADDRESS && tokenAddress.toLowerCase() === USDC_ADDRESS.toLowerCase()) {
@@ -47,7 +49,7 @@ interface Milestone {
   amount: string;
 }
 
-const ARC_CHAIN_ID = ARBITRUM_SEPOLIA.chainId;
+const EXPECTED_CHAIN_ID = ARBITRUM_SEPOLIA.chainId;
 
 export default function CreateEscrowPage() {
   const navigate = useNavigate();
@@ -81,7 +83,7 @@ export default function CreateEscrowPage() {
 
   const checkNetworkStatus = async () => {
     if (!wallet.isConnected) return;
-    setIsOnCorrectNetwork(!wallet.chainId || wallet.chainId === ARC_CHAIN_ID);
+    setIsOnCorrectNetwork(!wallet.chainId || wallet.chainId === EXPECTED_CHAIN_ID);
   };
 
   const checkContractPauseStatus = async () => {
@@ -207,7 +209,7 @@ export default function CreateEscrowPage() {
         hasErrors = true;
       }
       if (!formData.isOpenJob && (!formData.beneficiary || !/^0x[a-fA-F0-9]{40}$/.test(formData.beneficiary))) {
-        newErrors.beneficiary = "Valid Arc EVM address (0x…) required for direct escrow";
+        newErrors.beneficiary = "Valid wallet address (0x…) required for direct escrow";
         hasErrors = true;
       }
       if (!formData.useNativeToken && !formData.token) {
@@ -257,7 +259,7 @@ export default function CreateEscrowPage() {
       if (!formData.beneficiary)
         errs.push("Beneficiary address is required for direct escrow");
       else if (!/^0x[a-fA-F0-9]{40}$/.test(formData.beneficiary))
-        errs.push("Beneficiary must be a valid Arc EVM address (0x…)");
+        errs.push("Beneficiary must be a valid wallet address (0x…)");
     }
     if (formData.milestones.length === 0)
       errs.push("At least one milestone is required");
@@ -311,10 +313,9 @@ export default function CreateEscrowPage() {
         ? undefined
         : (formData.beneficiary as `0x${string}`) || undefined;
 
-      // Convert amounts to base units using the correct token decimals
-      // Arc Testnet USDC is an ERC-20 token at 0x3600...0000, NOT native token
-      // Always use USDC token address (it's an ERC-20, not native)
-      const tokenAddr = USDC_ADDRESS || "0x3600000000000000000000000000000000000000";
+      // Jobs are always denominated in the USDC ERC-20, never in the chain's
+      // own currency — the escrow would then hold ETH, which nobody is owed.
+      const tokenAddr = USDC_ADDRESS;
       
       const totalAmountWei = parseTokenAmount(formData.totalBudget, tokenAddr);
       const milestoneAmountsWei = formData.milestones.map((m) =>
@@ -326,7 +327,10 @@ export default function CreateEscrowPage() {
         throw new Error("Total amount is 0. Please enter a valid amount.");
       }
 
-      // Check USDC balance (wallet.balance shows USDC balance on Arc Testnet)
+      /* wallet.balance is the USDC balance. It was the NATIVE balance until the
+         chain changed underneath it, so this compared a budget in dollars
+         against a balance in ether and refused every job a funded client tried
+         to post. */
       const walletBalance = Number.parseFloat(wallet.balance || "0");
       const requiredBalance = Number.parseFloat(formData.totalBudget);
       if (walletBalance < requiredBalance) {
@@ -341,9 +345,7 @@ export default function CreateEscrowPage() {
 
       if (!wallet.address) throw new Error("Wallet not connected");
 
-      // For Arc Testnet USDC (ERC-20), pass the USDC token address
-      // USDC is an ERC-20 token, not native ETH
-      const tokenToPass = USDC_ADDRESS || "0x3600000000000000000000000000000000000000";
+      const tokenToPass = USDC_ADDRESS;
 
       /*
        * The fee choice has to be recorded BEFORE the escrow exists.
@@ -459,7 +461,7 @@ export default function CreateEscrowPage() {
                 <div>
                   <h3 className="font-semibold text-destructive">Wrong Network</h3>
                   <p className="text-sm text-muted-foreground">
-                    Please switch your wallet to Arc Testnet (chain ID {ARC_CHAIN_ID})
+                    Please switch your wallet to Arbitrum Sepolia (chain ID {EXPECTED_CHAIN_ID})
                   </p>
                 </div>
               </div>

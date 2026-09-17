@@ -197,7 +197,7 @@ export default function FreelancerPage({ embedded = false }: { embedded?: boolea
   const { writeContractAsync } = useWriteContract();
   const publicClient = usePublicClient();
   const { addNotification } = useNotifications();
-  // Arc EVM uses standard EOA wallets
+  // Arbitrum uses standard EOA wallets
   // const { executeTransaction, isSmartAccountReady } = useSmartAccount();
   const [escrows, setEscrows] = useState<Escrow[]>([]);
   const [loading, setLoading] = useState(false);

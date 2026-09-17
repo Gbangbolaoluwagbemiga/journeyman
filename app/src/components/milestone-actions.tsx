@@ -21,7 +21,7 @@ import { CONTRACTS } from "@/lib/web3/config";
 
 import { AlertTriangle, CheckCircle2, Gavel, Loader2, Play, Send, XCircle } from "lucide-react";
 import type { Milestone } from "@/lib/web3/types";
-import { formatEth, formatTokenAmount } from "@/lib/utils";
+import { formatUsdc, formatTokenAmount, USDC_ADDRESS } from "@/lib/utils";
 
 interface MilestoneActionsProps {
   escrowId: string;
@@ -644,9 +644,11 @@ export function MilestoneActions({
               // Get the original dispute reason
               const disputeReason = milestone.disputeReason;
               
-              // Get the token address from the escrow (we need to pass this as a prop)
-              // For now, use address(0) which represents USDC on Arc Testnet
-              const tokenAddress = "0x0000000000000000000000000000000000000000";
+              /* The settlement currency, named. This was address(0), which used to
+                 mean USDC because the native currency was USDC; here address(0)
+                 is ETH, and an award of 5 USDC would have rendered as
+                 0.000000000000000005 ETH. */
+              const tokenAddress = USDC_ADDRESS;
               
               return (
                 <div className="space-y-2 bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg border border-blue-200 dark:border-blue-800">
@@ -766,7 +768,7 @@ export function MilestoneActions({
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Amount:</span>
                 <span className="font-bold text-primary">
-                  {formatEth(milestone.amount)}
+                  {formatUsdc(milestone.amount)}
                 </span>
               </div>
             </div>
