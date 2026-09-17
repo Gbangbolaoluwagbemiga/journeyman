@@ -50,7 +50,7 @@ which it cannot act at all.
 | Variable | Why |
 |---|---|
 | `JOURNEYMAN_CONTRACT_ADDRESS` | **Required.** The proxy it hires and pays through |
-| `ARC_RPC_URL` | **Required.** Chain access |
+| `ARB_RPC_URL` | Chain access. Optional — defaults to Arbitrum Sepolia's public RPC. The old `ARC_RPC_URL` is not read; a stale one left set on the host would otherwise keep the daemon on a chain nothing is deployed to |
 | `CIRCLE_API_KEY` · `CIRCLE_ENTITY_SECRET` | **Required.** Without these it holds no wallet and signs nothing |
 | `CIRCLE_WALLET_ID` · `CIRCLE_WALLET_ADDRESS` | **Required.** The agent's own treasury |
 | `GROQ_API_KEY` | **Required.** No model, no hiring decision |
@@ -61,6 +61,7 @@ which it cannot act at all.
 | `GOOGLE_CLIENT_ID` | Google sign-in for managed workers |
 | `HIRE_SCORE_THRESHOLD` | The hiring bar. Model-dependent — see below |
 | `WORKER_WALLET_SET_ID` | Minting a wallet per freelancer |
+| `WORKER_SIGNUP_GAS_ETH` · `WORKER_MIN_GAS_ETH` | Gas dripped to a new managed worker, in **ETH**. Gas and earnings are different assets here — a worker funded in USDC holds money they cannot move |
 | `MAX_JOB_BUDGET_USDC` · `DAILY_SPEND_CAP_USDC` | Spend limits. Set them |
 
 Do **not** set `PORT`. Railway injects it, and the daemon reads it.
