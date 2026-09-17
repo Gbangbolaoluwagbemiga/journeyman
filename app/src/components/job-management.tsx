@@ -127,6 +127,53 @@ export function JobManagement({
 
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  /*
+   * EVERY HOOK RUNS BEFORE THE EARLY RETURN BELOW.
+   *
+   * These three and the effect under them used to sit two hundred lines
+   * further down, after `if (!isOpenJob || !isClient) return null`. That is a
+   * crash, not a lint preference: the moment a client hires somebody, isOpenJob
+   * flips false on a mounted component, React renders fewer hooks than the
+   * previous pass and throws "Rendered fewer hooks than expected" — on the
+   * client's own management panel, triggered by the most important action in
+   * the product.
+   */
+  /* ── Editing the stage list ────────────────────────────────────────────────
+   *
+   * Asked for directly, and the old answer was "cancel and post it again" —
+   * addJobFunds could only grow a stage that already existed. Cancelling is
+   * priced to discourage exactly that: free three times, then 5%, 10%, 15%,
+   * plus a penalty scaled to the applications already received. Deciding a job
+   * needs one more stage is not abuse.
+   *
+   * The editor sends the list the client is LOOKING AT, not a delta. That is
+   * deliberate: setMilestones replaces, so a list assembled from a stale or
+   * failed read would quietly drop stages. What is on screen is what they are
+   * agreeing to.
+   */
+  const [editOpen, setEditOpen] = useState(false);
+  const [canEdit, setCanEdit] = useState(false);
+  const [draft, setDraft] = useState<{ amount: string; requirements: string }[]>([]);
+
+  /* Whether the DEPLOYED contract has the function. The source is ahead of the
+     proxy, so this is asked of the chain rather than assumed — the editor
+     appears the moment the implementation is upgraded, with no app redeploy. */
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const { ContractService } = await import("@/lib/web3/contract-service");
+        const ok = await new ContractService(CONTRACTS.JOURNEYMAN_ESCROW).supportsMilestoneEditing();
+        if (!cancelled) setCanEdit(ok);
+      } catch {
+        /* Leave it hidden. A button that reverts is worse than one absent. */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const currentTotal = weiToUsdc(totalAmount);
   const addTotalNum = parseFloat(addTotal || "0");
   const withdrawTotalNum = parseFloat(withdrawTotal || "0");
@@ -292,41 +339,6 @@ export function JobManagement({
     }
   };
 
-  /* ── Editing the stage list ────────────────────────────────────────────────
-   *
-   * Asked for directly, and the old answer was "cancel and post it again" —
-   * addJobFunds could only grow a stage that already existed. Cancelling is
-   * priced to discourage exactly that: free three times, then 5%, 10%, 15%,
-   * plus a penalty scaled to the applications already received. Deciding a job
-   * needs one more stage is not abuse.
-   *
-   * The editor sends the list the client is LOOKING AT, not a delta. That is
-   * deliberate: setMilestones replaces, so a list assembled from a stale or
-   * failed read would quietly drop stages. What is on screen is what they are
-   * agreeing to.
-   */
-  const [editOpen, setEditOpen] = useState(false);
-  const [canEdit, setCanEdit] = useState(false);
-  const [draft, setDraft] = useState<{ amount: string; requirements: string }[]>([]);
-
-  /* Whether the DEPLOYED contract has the function. The source is ahead of the
-     proxy, so this is asked of the chain rather than assumed — the editor
-     appears the moment the implementation is upgraded, with no app redeploy. */
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      try {
-        const { ContractService } = await import("@/lib/web3/contract-service");
-        const ok = await new ContractService(CONTRACTS.JOURNEYMAN_ESCROW).supportsMilestoneEditing();
-        if (!cancelled) setCanEdit(ok);
-      } catch {
-        /* Leave it hidden. A button that reverts is worse than one absent. */
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   function openEditor() {
     setDraft(

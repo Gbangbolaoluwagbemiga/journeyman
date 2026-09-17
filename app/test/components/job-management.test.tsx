@@ -125,3 +125,64 @@ describe("JobManagement — Add Funds milestone picker displays whatever descrip
     expect(await screen.findByText("Build the responsive navbar")).toBeInTheDocument();
   });
 });
+
+describe("the panel survives the job it is managing being taken", () => {
+  /*
+   * WHY THIS IS A CRASH AND NOT A LINT PREFERENCE.
+   *
+   * `if (!isOpenJob || !isClient) return null` sat ABOVE four hooks — three
+   * useState and the useEffect that asks the chain whether milestone editing
+   * is deployed. That is fine on a first render and fatal on a second: the
+   * moment a client hires somebody, isOpenJob flips false on a component that
+   * is already mounted, React finds fewer hooks than last time and throws
+   * "Rendered fewer hooks than expected".
+   *
+   * So the panel blew up on the client's own screen, triggered by the single
+   * most important action in the product. Every hook now runs before the
+   * return, and this rerender is the proof.
+   */
+  it("does not throw when the job stops being open under it", () => {
+    const { rerender } = render(
+      <JobManagement
+        escrowId="1"
+        isOpenJob={true}
+        isClient={true}
+        totalAmount="10000000"
+        token="0xUSDC"
+        projectTitle="Landing Page Redesign"
+        milestones={[]}
+      />,
+    );
+    // Mounted and past its first commit, so all four hooks are registered.
+    expect(document.body.textContent).not.toBe("");
+
+    expect(() =>
+      rerender(
+        <JobManagement
+          escrowId="1"
+          isOpenJob={false}
+          isClient={true}
+          totalAmount="10000000"
+          token="0xUSDC"
+          projectTitle="Landing Page Redesign"
+          milestones={[]}
+        />,
+      ),
+    ).not.toThrow();
+  });
+
+  it("renders nothing once the job is assigned, rather than a stale panel", () => {
+    const { container } = render(
+      <JobManagement
+        escrowId="1"
+        isOpenJob={false}
+        isClient={true}
+        totalAmount="10000000"
+        token="0xUSDC"
+        projectTitle="Landing Page Redesign"
+        milestones={[]}
+      />,
+    );
+    expect(container).toBeEmptyDOMElement();
+  });
+});

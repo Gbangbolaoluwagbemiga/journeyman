@@ -21,5 +21,8 @@
     "module": "ESNext",
     "target": "ES2022"
   },
-  "include": ["e2e/**/*.ts", "playwright.config.ts"]
+  // playwright.shots.config.ts is listed for the same reason the others are.
+  // It was the one file still outside every project, so eslint could not parse
+  // it and reported exactly the error this file was created to remove.
+  "include": ["e2e/**/*.ts", "playwright.config.ts", "playwright.shots.config.ts"]
 }
