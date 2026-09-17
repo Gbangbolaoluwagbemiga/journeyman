@@ -19,17 +19,21 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
  *
  * WHY IT EXISTS ANYWAY
  *
- * The real venue is {UniswapV4StableAdapter}, and it cannot run here: v4's
- * PoolManager takes its lock with TSTORE, so it needs a cancun chain, and Arc
- * testnet is not one. Without some venue the whole productive-escrow path is
- * unreachable — no escrow ever deploys, `escrowDeployed` is zero on every job,
- * and the 🌱 Earning tag renders for nobody. That is not a demo of a cautious
- * system; it is an untested code path wearing a disclaimer.
+ * It no longer runs anywhere Journeyman is deployed. The live venue on Arbitrum
+ * Sepolia is {UniswapV4StableAdapter} against the real PoolManager, and this is
+ * not in the deployment path — see script/DeployYieldArbitrum.s.sol.
  *
- * So this exists to make the mechanism real end to end on testnet — the opt-in,
- * the derived ceiling, the deployment, the unwind on payout, the waterfall that
- * splits what was earned — with the one part that cannot be real clearly
- * labelled as sponsored rather than dressed up as trading fees.
+ * It was written because the previous deployment had no choice: v4's PoolManager
+ * takes its lock with TSTORE, so it needs a cancun chain, and that one was not.
+ * Without some venue the whole productive-escrow path is unreachable — no escrow
+ * ever deploys, `escrowDeployed` is zero on every job, and the 🌱 Earning tag
+ * renders for nobody. That is an untested code path wearing a disclaimer.
+ *
+ * It is kept for two reasons. The controller's circuit breaker is only provable
+ * against a venue that can be told to misbehave, which this one can and a live
+ * pool cannot; and the next chain Journeyman lands on may again have no v4, in
+ * which case the honest fallback is a venue that says it earns nothing rather
+ * than an adapter pointed at a pool that does not exist.
  *
  * WHAT MAKES IT SAFE TO POINT LIVE ESCROW AT
  *
@@ -50,7 +54,7 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 contract SponsoredVault is IYieldAdapter {
     using SafeERC20 for IERC20;
 
-    /// @notice The asset held. address(0) is native, which is USDC on Arc.
+    /// @notice The asset held. address(0) means the chain's own currency.
     address public immutable token;
 
     /// @notice The JourneymanYield controller. The only address that may move money.

@@ -9,7 +9,7 @@ import "../src/yield/JourneymanYield.sol";
  * Deploy the productive-escrow controller and attach it to a live Journeyman.
  *
  *   PROXY_ADDRESS=0x… forge script script/DeployYield.s.sol \
- *     --rpc-url arc_testnet --broadcast
+ *     --rpc-url arbitrum_sepolia --broadcast
  *
  * Safe to run against an escrow already holding money: attaching a controller
  * changes nothing until a depositor opts a job in AND a venue is set for its

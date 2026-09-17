@@ -19,11 +19,11 @@ solc_version = "0.8.28"
 
 # Cancun, which is the whole reason this project moved.
 #
-# This was pinned to "shanghai" on Arc, because Arc EVM is not guaranteed to
-# have MCOPY or TSTORE — and Uniswap v4's PoolManager takes its lock with
+# This was pinned to "shanghai" on the previous chain, which is not guaranteed
+# to have MCOPY or TSTORE — and Uniswap v4's PoolManager takes its lock with
 # TSTORE, so the yield adapter could be fork-tested there and never deployed.
 # Arbitrum supports cancun and has a live PoolManager on both One and Sepolia,
-# so the adapter can finally run against a real pool rather than a fork.
+# so the adapter runs against a real pool. It is deployed against one.
 evm_version = "cancun"
 
 [rpc_endpoints]
@@ -38,31 +38,20 @@ arbitrum_one = "https://arb1.arbitrum.io/rpc"
 base = "https://mainnet.base.org"
 
 # Etherscan's V2 API is multichain: one key covers Arbiscan, so ETHERSCAN_API_KEY
-# is reused rather than issuing a second one. This is also why verification is
-# a plain `forge verify-contract` here — Arc's explorer is a self-hosted
-# Blockscout whose legacy /api rate-limits, and getting contracts verified there
-# meant posting standard-JSON to its v2 endpoint by hand.
+# is reused rather than issuing a second one. It is also why `--verify` works
+# inline on a deploy here, which is not something to take for granted — the
+# previous chain's explorer was a self-hosted Blockscout whose legacy /api
+# rate-limited, and verifying meant posting standard-JSON to its v2 endpoint by
+# hand, one contract at a time.
 [etherscan]
 arbitrum_sepolia = { key = "${ETHERSCAN_API_KEY}", chain = 421614 }
 arbitrum_one = { key = "${ETHERSCAN_API_KEY}", chain = 42161 }
 
-# Fork tests against a real Uniswap v4 PoolManager.
+# Fork tests against a real Uniswap v4 PoolManager need no separate profile any
+# more. They did when the default was shanghai: PoolManager's lock uses transient
+# storage, so its bytecode halted with EvmError: NotActivated the moment unlock()
+# was called, and loosening the default would have loosened what gets deployed.
+# The default is cancun now because the deployment target is, so:
 #
-# The default profile is pinned to shanghai for Arc, and PoolManager's lock uses
-# transient storage -- so under the default profile its bytecode halts with
-# EvmError: NotActivated the moment unlock() is called. That is a property of
-# the chain the test forks (Base, which has cancun), not of Journeyman's own
-# deployment target, so it belongs in its own profile rather than loosening the
-# one that governs what gets deployed to Arc.
-#
-#   FOUNDRY_PROFILE=fork forge test --match-path test/UniswapV4Fork.t.sol \
-#     --fork-url https://mainnet.base.org
-[profile.fork]
-src = "src"
-out = "out-fork"
-libs = ["lib"]
-via_ir = true
-optimizer = true
-optimizer_runs = 1
-solc_version = "0.8.28"
-evm_version = "cancun"
+#   forge test --match-path test/UniswapV4Fork.t.sol \
+#     --fork-url https://sepolia-rollup.arbitrum.io/rpc

@@ -8,7 +8,7 @@ import "../src/Journeyman.sol";
  * Whitelist USDC on a deployment.
  *
  *   JOURNEYMAN_ADDRESS=<PROXY> forge script script/WhitelistUSDC.s.sol \
- *     --rpc-url arc_testnet --broadcast
+ *     --rpc-url arbitrum_sepolia --broadcast
  *
  * Without this, createEscrow reverts with TokenNotWhitelisted for every job —
  * so it is the difference between a deployed contract and a usable one.
@@ -19,9 +19,16 @@ import "../src/Journeyman.sol";
  * the target from the environment now.
  */
 contract WhitelistUSDCScript is Script {
-    // Circle USDC on Arc. Note the contract treats address(0) as native USDC and
-    // always accepts it; this is the ERC20 the frontend actually points at.
-    address constant USDC = 0x3600000000000000000000000000000000000000;
+    /*
+     * Circle's testnet USDC on Arbitrum Sepolia — the ERC20 the frontend points
+     * at, and the only token escrows are denominated in.
+     *
+     * This used to be Arc's USDC precompile at 0x3600…0000, where address(0)
+     * also meant USDC because it was the chain's native currency. Neither is
+     * true here: address(0) is ETH, which is gas and not money anybody is owed,
+     * so the whitelist has to name the ERC20 explicitly.
+     */
+    address constant USDC = 0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d;
 
     function run() external {
         uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");

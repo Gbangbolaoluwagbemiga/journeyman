@@ -12,46 +12,56 @@ import {StateLibrary} from "v4-core/libraries/StateLibrary.sol";
 import {PoolIdLibrary} from "v4-core/types/PoolId.sol";
 
 /**
- * Fork tests for the v4 leg, against a real PoolManager.
+ * Fork tests for the v4 leg, against the PoolManager Journeyman is deployed on.
  *
- * Arc testnet has no Uniswap v4 — both canonical PoolManager addresses return
- * empty code there — so there is nothing to fork on the chain Journeyman's escrows
- * live on. Base mainnet has the real deployment, so that is what these point
- * at: the goal is to exercise the adapter against genuine v4 code, not a mock
- * that agrees with us.
+ * These used to fork Base, because the previous chain had no Uniswap v4 — both
+ * canonical PoolManager addresses return empty code there — so the adapter could
+ * only ever be exercised somewhere it would never run. Arbitrum Sepolia has a
+ * live PoolManager and Journeyman's yield venue is deployed against it, so these
+ * now fork the same chain, the same manager and the same pair as production.
  *
- * The pool itself is initialised by the test. Pool creation in v4 is
- * permissionless, so this is a real pool in the real PoolManager, seeded at 1:1
- * with the real USDC and USDT contracts — every line of pool mechanics executed
- * here is Uniswap's. What the test supplies is the starting price, so the
- * assertions can be exact instead of dependent on whatever a mainnet pool
- * happened to be doing that block.
+ * That closes a gap worth naming. The two things this pair gets wrong on any
+ * other chain are decimals and sort order, and both are silent:
  *
- *   forge test --match-path test/UniswapV4Fork.t.sol --fork-url https://mainnet.base.org
+ *   • Parity is not tick 0 here. Mainnet USDC and USDT are both 6 decimals; the
+ *     USDT the v4 pools on this chain use carries 18 against USDC's 6, and a v4
+ *     price is a ratio of RAW units, so parity is 1e6/1e18 and sqrtPriceX96 is
+ *     2**96/1e6. A test that assumed tick 0 would seed a pool a million times
+ *     off the peg and still pass.
+ *
+ *   • USDC sorts BELOW USDT on mainnet and ABOVE it here, so our asset is
+ *     currency1 rather than currency0 — which flips which side of the current
+ *     price a single-sided position has to sit on.
+ *
+ * Pool creation in v4 is permissionless, so the pool below is a real pool in the
+ * real PoolManager and every line of pool mechanics executed here is Uniswap's.
+ *
+ *   forge test --match-path test/UniswapV4Fork.t.sol \
+ *     --fork-url https://sepolia-rollup.arbitrum.io/rpc
  *
  * They skip when run without a fork, so `forge test` stays green offline.
  */
 contract UniswapV4ForkTest is Test {
-    /// Uniswap v4 PoolManager on Base mainnet.
-    address constant POOL_MANAGER = 0x498581fF718922c3f8e6A244956aF099B2652b2b;
-    address constant USDC = 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913;
-    address constant USDT = 0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2;
+    /// Uniswap v4 PoolManager on Arbitrum Sepolia — the one production uses.
+    address constant POOL_MANAGER = 0xFB3e0C6F74eB1a21CC1Da29aeC80D2Dfe6C9a317;
+    address constant USDC = 0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d;
+    address constant USDT = 0x382ED578cFBA5A1FfDD83a71CF69a00A6abaA308;
 
     /// A 0.01% pool with tickSpacing 1 — the usual shape for a stable pair.
     uint24 constant FEE = 100;
     int24 constant TICK_SPACING = 1;
 
-    /// USDC and USDT are both 6 decimals, so parity is exactly tick 0.
-    uint160 constant SQRT_PRICE_1_1 = 79228162514264337593543950336; // 2**96
+    /// sqrt(1e6/1e18) << 96 — parity for 18-decimal USDT against 6-decimal USDC.
+    uint160 constant SQRT_PRICE_PARITY = 79228162514264337593543; // 2**96 / 1e6
 
     /*
-     * USDC (0x8335…) sorts below USDT (0xfde4…), so USDC is currency0 and the
-     * single-sided range must sit entirely ABOVE the current tick.
+     * USDT (0x382e…) sorts below USDC (0x75fa…), so USDC — the asset — is
+     * currency1, and a position made entirely of it sits entirely BELOW the
+     * current tick.
      *
-     * Derived from the live tick rather than hardcoded. This pool already exists
-     * on Base and sits near parity but not exactly on it — it was at tick 2 when
-     * these were written — so a fixed range straddles the price on some blocks
-     * and not others, and the test would pass or fail according to the weather.
+     * Derived from the live tick rather than hardcoded, because a pool drifts.
+     * A fixed range straddles the price on some blocks and not others, and the
+     * test would then pass or fail according to the weather.
      */
     int24 tickLower;
     int24 tickUpper;
@@ -72,21 +82,21 @@ contract UniswapV4ForkTest is Test {
         adapter = new UniswapV4StableAdapter(vault, USDC, USDT, POOL_MANAGER);
 
         PoolKey memory key = PoolKey({
-            currency0: Currency.wrap(USDC),
-            currency1: Currency.wrap(USDT),
+            currency0: Currency.wrap(USDT),
+            currency1: Currency.wrap(USDC),
             fee: FEE,
             tickSpacing: TICK_SPACING,
             hooks: IHooks(address(0))
         });
-        // Reverts if this pool already exists on the fork, which is fine to
-        // ignore: an existing pool is just as real, and more honest than one we
-        // seeded. configurePool below asserts the price is where the range needs
-        // it either way.
-        try IPoolManager(POOL_MANAGER).initialize(key, SQRT_PRICE_1_1) {} catch {}
+        // Reverts if this pool already exists on the fork, which it does — the
+        // deploy script opened it. Fine to ignore either way: an existing pool
+        // is just as real, and more honest than one we seeded. configurePool
+        // below asserts the price is where the range needs it regardless.
+        try IPoolManager(POOL_MANAGER).initialize(key, SQRT_PRICE_PARITY) {} catch {}
 
         (, int24 currentTick,,) = StateLibrary.getSlot0(IPoolManager(POOL_MANAGER), PoolIdLibrary.toId(key));
-        tickLower = currentTick + 10;
-        tickUpper = tickLower + 200;
+        tickUpper = currentTick - 10;
+        tickLower = tickUpper - 200;
 
         adapter.configurePool(FEE, TICK_SPACING, address(0), tickLower, tickUpper);
     }
@@ -201,7 +211,7 @@ contract UniswapV4ForkTest is Test {
 
         UniswapV4StableAdapter fresh = new UniswapV4StableAdapter(vault, USDC, USDT, POOL_MANAGER);
         vm.expectRevert(UniswapV4StableAdapter.RangeNotSingleSided.selector);
-        fresh.configurePool(FEE, TICK_SPACING, address(0), tickLower - 100, tickUpper); // straddles the price
+        fresh.configurePool(FEE, TICK_SPACING, address(0), tickLower, tickUpper + 100); // straddles the price
     }
 
     /// An unconfigured adapter reports nothing available and refuses deposits.
@@ -228,7 +238,7 @@ contract UniswapV4ForkTest is Test {
         if (!_onFork()) return;
         assertEq(adapter.asset(), USDC);
         assertEq(adapter.pairedStable(), USDT);
-        assertTrue(adapter.assetIsCurrency0(), "USDC should sort first against USDT");
+        assertFalse(adapter.assetIsCurrency0(), "USDC sorts second against this chain's USDT");
         assertEq(address(adapter.poolManager()), POOL_MANAGER);
     }
 }

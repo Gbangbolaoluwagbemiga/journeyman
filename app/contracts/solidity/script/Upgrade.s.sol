@@ -8,7 +8,7 @@ import "../src/Journeyman.sol";
  * Ships a new implementation to an existing proxy.
  *
  *   PROXY_ADDRESS=0x… forge script script/Upgrade.s.sol \
- *     --rpc-url arc_testnet --broadcast
+ *     --rpc-url arbitrum_sepolia --broadcast
  *
  * BEFORE RUNNING THIS:
  *

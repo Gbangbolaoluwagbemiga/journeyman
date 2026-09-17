@@ -6,11 +6,12 @@ import "../src/yield/JourneymanYield.sol";
 import "../src/yield/SponsoredVault.sol";
 
 /**
- * THE VENUE WE ARE ACTUALLY POINTING LIVE TESTNET ESCROW AT.
+ * A VENUE THAT CUSTODIES OTHER PEOPLE'S MONEY.
  *
- * {SponsoredVault} custodies real money belonging to real freelancers on Arc
- * testnet, so the bar is not "does the demo work". It is: can anybody other
- * than the vault get a cent out of it, ever, by any path.
+ * {SponsoredVault} is no longer in the deployment path — Arbitrum Sepolia runs
+ * {UniswapV4StableAdapter} against the real PoolManager. It stays tested at this
+ * bar anyway, because the bar was never "does the demo work". It is: can anybody
+ * other than the vault get a cent out of it, ever, by any path.
  *
  * The answer has to be no, including for us. Every rescue hatch is also a rug,
  * and the thing being rescued would be somebody's unpaid milestone.
