@@ -38,9 +38,17 @@ contract WhitelistUSDCScript is Script {
          * A deploy script that suddenly cannot find its address is a bad way to
          * discover a rename — this one runs rarely, from a shell whose history
          * still has the old spelling in it.
+         *
+         * Written as two envOr calls rather than one with a fallback argument.
+         * Solidity evaluates arguments eagerly, so `envOr(A, envAddress(B))`
+         * calls envAddress(B) FIRST and reverts there when B is unset — which
+         * means the fallback this comment describes never once worked, and the
+         * script failed with "SECUREFLOW_ADDRESS not found" while the correct
+         * variable sat right there in the environment.
          */
+        address fromNewName = vm.envOr("JOURNEYMAN_ADDRESS", address(0));
         address payable journeymanAddress =
-            payable(vm.envOr("JOURNEYMAN_ADDRESS", vm.envAddress("SECUREFLOW_ADDRESS")));
+            payable(fromNewName != address(0) ? fromNewName : vm.envAddress("SECUREFLOW_ADDRESS"));
 
         vm.startBroadcast(deployerPrivateKey);
         Journeyman(journeymanAddress).whitelistToken(USDC);

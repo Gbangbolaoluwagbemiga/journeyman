@@ -416,13 +416,14 @@ handler offering only the permitted calls proves nothing.
 |---|---|
 | Network | Arbitrum Sepolia · chain `421614` |
 | Proxy (**the contract**) | [`0x5128B3E2a20d483f68834b26505aFD7457C282dc`](https://sepolia.arbiscan.io/address/0x5128B3E2a20d483f68834b26505aFD7457C282dc) |
-| Implementation | [`0x77123D946B89Fa1367ff3f323a5c6E5A3ADB70db`](https://sepolia.arbiscan.io/address/0x77123D946B89Fa1367ff3f323a5c6E5A3ADB70db) · `4.0.0-journeyman-arbitrum` |
+| Implementation | [`0x1173Bcc9183f29aFbB6f4C7E3c0b25476D3daF0F`](https://sepolia.arbiscan.io/address/0x1173Bcc9183f29aFbB6f4C7E3c0b25476D3daF0F) · `4.0.1-journeyman-arbitrum` |
 | Deploy block | `309527684` |
 | Yield controller | [`0x44a4a235DEb0b32929DDA386E9FE931Dd055d0E3`](https://sepolia.arbiscan.io/address/0x44a4a235DEb0b32929DDA386E9FE931Dd055d0E3) |
 | Yield venue | [`0xcc116FaD144FFAC4AdD5f97820Cd4C286488e24a`](https://sepolia.arbiscan.io/address/0xcc116FaD144FFAC4AdD5f97820Cd4C286488e24a) — `UniswapV4StableAdapter`, against the real PoolManager |
 | Uniswap v4 PoolManager | [`0xFB3e0C6F74eB1a21CC1Da29aeC80D2Dfe6C9a317`](https://sepolia.arbiscan.io/address/0xFB3e0C6F74eB1a21CC1Da29aeC80D2Dfe6C9a317) |
 | Pool | USDT/USDC · fee `100` · tickSpacing `1` · no hooks · range `[-276535, -276335]` |
-| USDC | [`0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d`](https://sepolia.arbiscan.io/address/0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d) — Circle testnet USDC |
+| USDC | [`0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d`](https://sepolia.arbiscan.io/address/0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d) — Circle testnet USDC, whitelisted |
+| Arbiter | `0x3Be7fbBDbC73Fc4731D60EF09c4BA1A94DC58E41` — authorised, so disputes can be resolved |
 
 All four are verified on Arbiscan. The venue is the same contract a mainnet
 deploy would use, pointed at the same Uniswap code — not a stub that agrees

@@ -12,7 +12,7 @@ import "./yield/IJourneymanYield.sol";
 /**
  * @title Journeyman
  * @dev Milestone-based escrow with on-chain ratings, deadline extension,
- *      and enumerable arbiter list — deployed on Arc EVM.
+ *      and enumerable arbiter list — deployed on Arbitrum.
  *
  * Fee model:
  *   Client deposits totalAmount + platformFee upfront.
@@ -392,7 +392,7 @@ contract Journeyman is
      * @dev Bump this in the same commit as any storage-layout change.
      */
     function version() external pure virtual returns (string memory) {
-        return "4.0.0-journeyman-arbitrum";
+        return "4.0.1-journeyman-arbitrum";
     }
 
     /// @dev Only the owner may ship a new implementation. See the note above.

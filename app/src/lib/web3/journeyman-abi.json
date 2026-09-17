@@ -1411,6 +1411,29 @@
   },
   {
     "type": "function",
+    "name": "setMilestones",
+    "inputs": [
+      {
+        "name": "escrowId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "amounts",
+        "type": "uint256[]",
+        "internalType": "uint256[]"
+      },
+      {
+        "name": "requirements",
+        "type": "string[]",
+        "internalType": "string[]"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "payable"
+  },
+  {
+    "type": "function",
     "name": "setPlatformFee",
     "inputs": [
       {
