@@ -10,7 +10,7 @@ cut of it, or decide who wins a dispute.
 
 [![Arbitrum](https://img.shields.io/badge/Arbitrum-Sepolia-28A0F0?style=flat-square)](https://arbitrum.io)
 [![Solidity](https://img.shields.io/badge/Solidity-0.8.28-363636?style=flat-square)](https://soliditylang.org)
-[![Tests](https://img.shields.io/badge/tests-974%20passing-5FD39A?style=flat-square)](#testing)
+[![Tests](https://img.shields.io/badge/tests-977%20passing-5FD39A?style=flat-square)](#testing)
 [![License](https://img.shields.io/badge/License-MIT-blue?style=flat-square)](LICENSE)
 
 </div>
@@ -362,11 +362,11 @@ Open **http://localhost:5173**.
 
 ## Testing
 
-**974 tests.** The contract suite went from zero.
+**977 tests.** The contract suite went from zero.
 
 | Suite | Count | What it covers |
 |---|--:|---|
-| Contract | **186** | Delegation, upgrade safety, productive escrow, the yield waterfall, self-dealing, whole-journey E2E |
+| Contract | **189** | Delegation, upgrade safety, productive escrow, the yield waterfall, self-dealing, whole-journey E2E |
 | Frontend | **459** | Actor semantics, nav, error humanising, worker session, brief reconciliation, job-card badges, the yield terms, declining a job, and what the board does when a read fails |
 | Backend | **71** | Route handlers, which browsers may call them, what they do when the database is unreachable, and that two spellings of an address are one person |
 | Daemon | **215** | Who the agent tells, who it hires, which jobs it picks up, whether it pays — and the difference between "nothing" and "could not find out" |
@@ -380,7 +380,7 @@ a freelancer asked to redo work they had already been paid for — so each place
 it has been found now has a test naming the incident.
 
 ```bash
-(cd app/contracts/solidity && forge test)   # 186
+(cd app/contracts/solidity && forge test)   # 189
 (cd app && npm test)                        # 459
 (cd backend && npx vitest run)              # 71
 (cd agent/daemon && npm test)               # 215
@@ -395,7 +395,7 @@ it has been found now has a test naming the incident.
 (cd app && npx eslint .)                    # 0 errors
 ```
 
-Eleven more are the Uniswap fork suite, on top of the 186. They skip without a
+Eleven more are the Uniswap fork suite, on top of the 189. They skip without a
 fork, so the count above holds offline; with one they run against the chain,
 the PoolManager and the pool this is actually deployed on, minting and
 unwinding real liquidity:
@@ -419,8 +419,8 @@ handler offering only the permitted calls proves nothing.
 | Proxy (**the contract**) | [`0x5128B3E2a20d483f68834b26505aFD7457C282dc`](https://sepolia.arbiscan.io/address/0x5128B3E2a20d483f68834b26505aFD7457C282dc) |
 | Implementation | [`0x1173Bcc9183f29aFbB6f4C7E3c0b25476D3daF0F`](https://sepolia.arbiscan.io/address/0x1173Bcc9183f29aFbB6f4C7E3c0b25476D3daF0F) · `4.0.1-journeyman-arbitrum` |
 | Deploy block | `309527684` |
-| Yield controller | [`0x44a4a235DEb0b32929DDA386E9FE931Dd055d0E3`](https://sepolia.arbiscan.io/address/0x44a4a235DEb0b32929DDA386E9FE931Dd055d0E3) |
-| Yield venue | [`0xcc116FaD144FFAC4AdD5f97820Cd4C286488e24a`](https://sepolia.arbiscan.io/address/0xcc116FaD144FFAC4AdD5f97820Cd4C286488e24a) — `UniswapV4StableAdapter`, against the real PoolManager |
+| Yield controller | [`0x58193bf684325D890aC13537EC7546ECB44E51CA`](https://sepolia.arbiscan.io/address/0x58193bf684325D890aC13537EC7546ECB44E51CA) |
+| Yield venue | [`0x9444b70a5832c98C1553591bb26AD525B404Eef3`](https://sepolia.arbiscan.io/address/0x9444b70a5832c98C1553591bb26AD525B404Eef3) — `UniswapV4StableAdapter`, against the real PoolManager |
 | Uniswap v4 PoolManager | [`0xFB3e0C6F74eB1a21CC1Da29aeC80D2Dfe6C9a317`](https://sepolia.arbiscan.io/address/0xFB3e0C6F74eB1a21CC1Da29aeC80D2Dfe6C9a317) |
 | Pool | USDT/USDC · fee `100` · tickSpacing `1` · no hooks · range `[-276535, -276335]` |
 | USDC | [`0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d`](https://sepolia.arbiscan.io/address/0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d) — Circle testnet USDC, whitelisted |

@@ -433,13 +433,49 @@ contract JourneymanYield is IJourneymanYield, Ownable2Step, ReentrancyGuard {
         uint256 deployed = escrowDeployed[escrowId];
         if (deployed == 0) return;
 
+        address token = IJourneymanEscrows(escrow).getEscrow(escrowId).token;
+        IYieldAdapter adapter = yieldAdapter[token];
+        if (address(adapter) == address(0)) return;
+
+        /*
+         * TRUST THE POOL, WHICH IS REAL, OVER THIS BOOK, WHICH GOES STALE.
+         *
+         * `ensureLiquid` is keyed on the TOKEN and not the escrow — the escrow
+         * calls it from _doTransfer, which has no escrow id to give. So when it
+         * unwinds to cover a payment it reduces `deployedAssets` and physically
+         * cannot reduce this escrow's share of it. The per-escrow book then
+         * claims capital the venue no longer holds.
+         *
+         * Found by running one real job on the live deployment. A 4 USDC job
+         * with two 2 USDC stages deploys 1.6 and keeps 2.4 in cash. Stage one
+         * is paid from cash. Stage two needs 2 against 0.5, so ensureLiquid
+         * pulls 1.5 back — correctly, and the freelancer is paid in full — but
+         * escrowDeployed still said 1.6. This function then asked the adapter
+         * for 1.6 when it held 0.1, the adapter reverted rather than underpay
+         * exactly as it promises to, the catch below swallowed it, and the
+         * remaining 0.1 was stranded with the book permanently wrong.
+         *
+         * Nothing was mispaid, and nothing would be: the escrow pays from its
+         * own balance and its own per-escrow arithmetic. What broke is this
+         * contract's belief about where the money is — which is also what
+         * decides whether the controller can ever be replaced, because the
+         * deploy script refuses to swap one that still has capital out.
+         *
+         * The clamp is applied to the stored book too, and before the
+         * withdrawal rather than after, so a venue that is down does not leave
+         * the correction undone.
+         */
+        uint256 pooled_ = deployedAssets[token];
+        if (deployed > pooled_) {
+            deployed = pooled_;
+            escrowDeployed[escrowId] = deployed;
+            if (deployed == 0) return;
+        }
+
         uint256 safe = investableCeiling(escrowId);
         if (deployed <= safe) return;
 
         uint256 excess = deployed - safe;
-        address token = IJourneymanEscrows(escrow).getEscrow(escrowId).token;
-        IYieldAdapter adapter = yieldAdapter[token];
-        if (address(adapter) == address(0)) return;
 
         /*
          * When this closes the position entirely, claim the earnings with it.
@@ -464,8 +500,43 @@ contract JourneymanYield is IJourneymanYield, Ownable2Step, ReentrancyGuard {
             }
         }
 
+        /*
+         * NEVER ASK FOR MORE THAN THE VENUE CAN PAY.
+         *
+         * `withdraw` returns exactly what was asked or reverts — that is the
+         * property the escrow's circuit breaker is built on — so an over-ask is
+         * not a partial fill. It is the whole unwind failing and the position
+         * staying exactly where it was.
+         *
+         * And a Uniswap v4 position can NEVER return quite its full principal:
+         * minting rounds the liquidity down, so a deposit of 1,600,000 is worth
+         * 1,599,999 the instant it lands. Asking for the book value therefore
+         * reverted on every single full unwind — measured on the live pool, one
+         * unit short on a 1.6 USDC position. The feature could deploy capital
+         * and could not close it.
+         */
+        uint256 available = adapter.maxWithdrawable();
+        if (claim > available) claim = available;
+        if (claim == 0) return;
+
         try adapter.withdraw(claim) returns (uint256 recovered) {
             uint256 booked = recovered > deployed ? deployed : recovered;
+            /*
+             * THE BOOKS FOLLOW WHAT CAME BACK, AND NOTHING IS WRITTEN OFF.
+             *
+             * A draft of this zeroed the escrow's book whenever the position
+             * was being closed, on the reasoning that anything left behind was
+             * rounding dust. invariant_contractCanAlwaysCoverWhatItOwes failed
+             * within a few thousand calls and was right to: a venue that has
+             * LOST value also returns less than the book says, and writing that
+             * difference off is the escrow forgetting money it is owed rather
+             * than admitting it cannot reach it.
+             *
+             * So the shortfall stays on the books and surfaces as an event. On
+             * a healthy v4 position that residue is one unit of USDC per
+             * unwind, left by the same rounding that made the clamp above
+             * necessary.
+             */
             escrowDeployed[escrowId] = deployed - booked;
             deployedAssets[token] -= booked;
             /*

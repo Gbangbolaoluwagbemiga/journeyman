@@ -14,11 +14,11 @@ steps if you ever deploy a fresh proxy.
 | Proxy (**the contract**) | `0x5128B3E2a20d483f68834b26505aFD7457C282dc` |
 | Implementation | `0x1173Bcc9183f29aFbB6f4C7E3c0b25476D3daF0F` · `4.0.1-journeyman-arbitrum` |
 | Deploy block | `309527684` |
-| Yield controller | `0x44a4a235DEb0b32929DDA386E9FE931Dd055d0E3` |
-| Yield venue | `0xcc116FaD144FFAC4AdD5f97820Cd4C286488e24a` — `UniswapV4StableAdapter` |
+| Yield controller | `0x58193bf684325D890aC13537EC7546ECB44E51CA` |
+| Yield venue | `0x9444b70a5832c98C1553591bb26AD525B404Eef3` — `UniswapV4StableAdapter` |
 | USDC whitelisted | yes — `0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d` |
 | Arbiter authorised | yes — `0x3Be7fbBDbC73Fc4731D60EF09c4BA1A94DC58E41` |
-| Escrows | none — clean history |
+| Escrows | one, settled in full — see `script/LiveCheck.s.sol` |
 
 All four contracts are verified on Arbiscan.
 
@@ -104,7 +104,7 @@ cast wallet new
 cd app/contracts/solidity
 set -a && . ./.env && set +a
 
-forge test                                                  # 186 must pass first
+forge test                                                  # 189 must pass first
 forge script script/Deploy.s.sol --rpc-url arbitrum_sepolia # simulate
 forge script script/Deploy.s.sol --rpc-url arbitrum_sepolia --broadcast --verify
 ```
@@ -129,6 +129,15 @@ cast send <PROXY> "authorizeArbiter(address)" <YOUR_ADDRESS> \
 #    opens the USDT/USDC pool if nobody has, and wires the two together.
 PROXY_ADDRESS=<PROXY> forge script script/DeployYieldArbitrum.s.sol \
   --rpc-url arbitrum_sepolia --broadcast --verify
+```
+
+Then prove it, which is the step that catches what none of the above do:
+
+```bash
+# Hires a freelancer, deploys the idle capital into the v4 pool, delivers,
+# pays, and asserts the numbers at every hop. Spends about 4.1 testnet USDC.
+PROXY_ADDRESS=<PROXY> E2E_FREELANCER_KEY=0x… \
+  forge script script/LiveCheck.s.sol --rpc-url arbitrum_sepolia --broadcast
 ```
 
 Point the app at it — `app/.env`:
