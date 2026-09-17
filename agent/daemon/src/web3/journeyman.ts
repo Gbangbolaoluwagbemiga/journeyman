@@ -19,7 +19,7 @@ import { createCircleSigner, type CircleSigner } from "../circle/circleSigner.js
 // and accept `value` on `createEscrow` — a looser `unknown[]` cast defeats that.
 const abi = journeymanAbi as Abi;
 
-// Arc's USDC precompile (config.usdcAddress) is a non-zero address, so Journeyman's
+// USDC (config.usdcAddress) is a real ERC-20 here, so Journeyman's
 // createEscrow treats it as an ERC20 (NATIVE_TOKEN in the contract is address(0) —
 // see Journeyman.sol): it requires msg.value === 0 and pulls funds itself via
 // safeTransferFrom, which needs a prior `approve`. quoteDeposit's return is already
@@ -48,7 +48,7 @@ export function getPublicClient(): PublicClient {
 /**
  * Logs come from the same client as reads, now.
  *
- * On Arc these were deliberately two endpoints: one answered reads all day and
+ * On the previous chain these were deliberately two endpoints: one answered reads all day
  * capped a log range under 200 blocks while claiming the limit was 10,000, the
  * other walked real ranges and rate-limited a bare eth_call. Pointing
  * everything at the second to get logs is what once put a freelancer's balance
@@ -79,7 +79,7 @@ export interface CreateEscrowParams {
  * Returns the new escrow id AND the creating transaction hash. The hash used to
  * be discarded, which meant the moment the money is actually locked — the
  * single most important payment in the whole story, and the one the pitch tells
- * a judge to click through to Arcscan — was never recorded in the payment feed
+ * a judge to click through to the explorer — was never recorded in the payment feed
  * at all. Every "Locked in Escrow" row that ever appeared there came from an
  * unrelated event falling through a catch-all.
  */
@@ -437,8 +437,12 @@ const DISPUTE_RESOLVED = {
 } as const;
 
 /**
- * Arc's RPC refuses any getLogs range wider than this. Measured, not guessed:
- * 9,000 blocks is accepted and 90,000 is rejected outright.
+ * The widest getLogs range this RPC will answer, respected by chunking.
+ *
+ * Taken from config rather than hardcoded, because it is a property of the
+ * endpoint and the endpoint is configurable. The default, 100,000, is measured
+ * against Arbitrum Sepolia's public RPC and conservative — it answers 500,000
+ * in one call. The previous value, 9,000, was the old chain's real limit.
  *
  * The first version of this asked for 90k and 900k windows, got "RPC Request
  * failed" for both, swallowed it in a catch, and returned "no awards" — so the
@@ -446,10 +450,23 @@ const DISPUTE_RESOLVED = {
  * range limit has to be respected by chunking, never by asking for more and
  * hoping.
  */
-const LOG_WINDOW = 9_000n;
+const LOG_WINDOW = config.logRangeLimit;
 
-/** ~1.94 blocks/sec on Arc, so one window is roughly 75 minutes. */
-export const CHUNKS_PER_DAY = 12;
+/**
+ * How many windows cover a day. MEASURED AGAINST THE CHAIN, NOT CARRIED OVER.
+ *
+ * Arbitrum Sepolia produces 4.01 blocks/sec — 346,070 a day — against the old
+ * chain's 1.94. The previous pair of constants, 9,000 blocks twelve times, is
+ * 108,000 blocks: a little over a day there and SEVEN AND A HALF HOURS here.
+ * A constant named CHUNKS_PER_DAY that covers a third of a day does not fail;
+ * it reports "no dispute found" for anything settled before lunchtime, which is
+ * the same shape of bug that once emptied out a freelancer's own record of what
+ * had been decided about their payment.
+ *
+ * 4 x 100,000 = 400,000 blocks, about 27.7 hours. Rounded up on purpose: the
+ * cost of overlapping into yesterday is one extra request.
+ */
+export const CHUNKS_PER_DAY = 4;
 
 async function scanDisputes(
   chunks: number,
@@ -842,5 +859,9 @@ export async function getEscrowApplications(escrowId: bigint) {
 }
 
 export function explorerUrl(txHash: string): string {
-  return `https://testnet.arcscan.app/tx/${txHash}`;
+  return `${config.explorerBaseUrl}/tx/${txHash}`;
+}
+
+export function explorerAddressUrl(address: string): string {
+  return `${config.explorerBaseUrl}/address/${address}`;
 }

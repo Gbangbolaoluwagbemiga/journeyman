@@ -9,7 +9,7 @@
 // job is something a real human's own wallet does, so this uses plain viem hot
 // wallets. Set FREELANCER_1_KEY / FREELANCER_2_KEY / FREELANCER_3_KEY in daemon/.env
 // to reuse the same funded addresses across runs; otherwise fresh keys are
-// generated each time and printed so you can fund them from the Arc faucet.
+// generated each time and printed so you can fund them from the faucets.
 
 import "dotenv/config";
 import { createPublicClient, createWalletClient, http } from "viem";
@@ -63,7 +63,7 @@ async function main() {
       console.log(`⚠ ${a.keyEnv} not set — generated ephemeral key for ${a.label}.`);
       console.log(`  Address: ${account.address}`);
       console.log(`  Key:     ${key}  (save this to daemon/.env as ${a.keyEnv} to reuse)`);
-      console.log(`  Fund this address with a little native USDC (gas) on Arc testnet before it can send a tx.\n`);
+      console.log(`  Fund this address with a little Arbitrum Sepolia ETH (gas) before it can send a tx.\n`);
     }
 
     const walletClient = createWalletClient({ account, chain: arbitrumSepolia, transport: http(rpcUrl) });

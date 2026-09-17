@@ -94,7 +94,7 @@ const GATEWAY_API_TESTNET = "https://gateway-api-testnet.circle.com/v1";
 const X402_TIMEOUT_MS = 20_000;
 
 /**
- * The Journeyman Agent Wallet treasury as a Circle Programmable Wallet (MPC) on Arc.
+ * The Journeyman Agent Wallet treasury as a Circle Programmable Wallet (MPC).
  *
  * Circle holds the key shares — no raw private key ever touches Journeyman. Every
  * commission payment Journeyman makes to marketplace services (EIP-3009 authorization
@@ -155,7 +155,7 @@ export function createJourneymanGateway(): JourneymanGateway {
         typeof extra?.verifyingContract === "string"
       );
     });
-    if (!batchingOption) throw new Error(`No Gateway batching option for ${expectedNetwork} — seller may not support Arc.`);
+    if (!batchingOption) throw new Error(`No Gateway batching option for ${expectedNetwork} — the seller may not support this chain.`);
 
     // ── The MPC signature: Circle signs the EIP-3009 authorization. No raw key. ──
     const paymentPayload = await scheme.createPaymentPayload(paymentRequired.x402Version ?? 2, batchingOption as never);

@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Patron's guild \u2014 the 24/7 Node daemon. AI agents pay Patron via x402; Patron hires, manages, and pays real humans through on-chain escrow on Arc.",
+  "description": "Journeyman's guild — the 24/7 Node daemon. AI agents pay via x402; Journeyman hires, manages, and pays real humans through on-chain escrow on Arbitrum.",
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "start": "tsx src/index.ts",

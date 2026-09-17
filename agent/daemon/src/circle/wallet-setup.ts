@@ -7,7 +7,7 @@ import { config } from "../config.js";
  *
  *   npm run circle:setup
  *
- * Creates a wallet set + one MPC wallet on Arc Testnet, DEDICATED to Journeyman, and
+ * Creates a wallet set + one MPC wallet on Arbitrum Sepolia, DEDICATED to Journeyman, and
  * prints the env lines to paste into daemon/.env. This reuses the SAME Circle
  * account (CIRCLE_API_KEY + CIRCLE_ENTITY_SECRET) already registered for the
  * Foreman project — no need to re-register an entity secret — but provisions a
@@ -52,7 +52,7 @@ async function main() {
   console.log("\n── Add these to daemon/.env ──");
   console.log(`CIRCLE_WALLET_ID=${wallet.id}`);
   console.log(`CIRCLE_WALLET_ADDRESS=${wallet.address}`);
-  console.log("\nNext: fund that address with testnet USDC on Arc (faucet), then start the daemon.");
+  console.log("\nNext: fund that address with Arbitrum Sepolia ETH for gas AND testnet USDC for hiring, then start the daemon.");
   console.log("Set spending policy caps live via the Circle CLI as part of the demo setup.\n");
 }
 

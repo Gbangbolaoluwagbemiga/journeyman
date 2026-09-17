@@ -17,20 +17,32 @@
 // is not extractable by anyone.
 
 import { initiateDeveloperControlledWalletsClient } from "@circle-fin/developer-controlled-wallets";
-import { createPublicClient, http, parseUnits, formatUnits, erc20Abi } from "viem";
+import { createPublicClient, http, parseUnits, parseEther, formatEther, formatUnits, erc20Abi } from "viem";
 import { arbitrumSepolia, config, rpcUrl } from "../config.js";
 import { createCircleSigner } from "../circle/circleSigner.js";
 
 /**
  * Gas handed to a brand-new worker so their first application can be signed.
  *
- * On Arc this is unusually simple: the native currency IS USDC, also exposed as
- * an ERC-20 at the same value. So one small transfer covers gas AND is the same
- * asset they get paid in — a new worker can never land in the classic beginner
- * trap of holding tokens with no gas to move them. On any other chain this
- * feature would need a separate gas-sourcing story per user.
+ * GAS IS ETH HERE, AND THAT IS NOT A COSMETIC DIFFERENCE.
+ *
+ * On the previous chain the native currency WAS USDC, also exposed as an ERC-20
+ * at the same value, so one small USDC transfer covered gas and was the same
+ * asset they get paid in. A managed worker could not land in the beginner trap
+ * of holding tokens with no gas to move them.
+ *
+ * Arbitrum splits those apart again. This function kept transferring USDC after
+ * the port, so a new worker was handed 0.05 USDC and zero ETH — they could hold
+ * money and could not sign a single transaction. Worse, ensureGas measured the
+ * same USDC balance against its floor, saw 0.05 >= 0.01, and reported them
+ * funded; the first thing they would actually see is a raw "insufficient funds
+ * for gas" from the chain, which the API's sanitiser renders as OUR treasury
+ * being empty.
+ *
+ * 0.0005 ETH is roughly three hundred applications at the gas price this chain
+ * has been running at. It is a floor, not a budget.
  */
-const SIGNUP_GAS_USDC = process.env.WORKER_SIGNUP_GAS_USDC?.trim() || "0.05";
+const SIGNUP_GAS_ETH = process.env.WORKER_SIGNUP_GAS_ETH?.trim() || "0.0005";
 
 let walletSetId: string | null = null;
 
@@ -97,17 +109,15 @@ export async function provisionWorkerWallet(): Promise<ProvisionedWallet> {
 export async function dripGas(to: `0x${string}`): Promise<`0x${string}` | null> {
   try {
     const signer = createCircleSigner();
-    const hash = await signer.walletClient.writeContract({
+    const hash = await signer.walletClient.sendTransaction({
       chain: arbitrumSepolia,
       account: signer.address,
-      address: config.usdcAddress,
-      abi: erc20Abi,
-      functionName: "transfer",
-      args: [to, parseUnits(SIGNUP_GAS_USDC, 6)],
+      to,
+      value: parseEther(SIGNUP_GAS_ETH),
     });
     const pub = createPublicClient({ chain: arbitrumSepolia, transport: http(rpcUrl) });
     await pub.waitForTransactionReceipt({ hash });
-    console.log(`[workers] dripped ${SIGNUP_GAS_USDC} USDC to ${to} (${hash})`);
+    console.log(`[workers] dripped ${SIGNUP_GAS_ETH} ETH to ${to} (${hash})`);
     return hash;
   } catch (err) {
     console.warn(`[workers] gas drip to ${to} failed (non-fatal):`, err instanceof Error ? err.message : err);
@@ -115,7 +125,13 @@ export async function dripGas(to: `0x${string}`): Promise<`0x${string}` | null> 
   }
 }
 
-/** What a worker is holding right now — on Arc, this is both their gas and their earnings. */
+/**
+ * What a worker has EARNED — USDC, the asset every job pays in.
+ *
+ * Not the same question as whether they can sign, which is workerGasBalance
+ * below. These were one number on the previous chain and are two here, and the
+ * places that conflated them are the reason this comment is long.
+ */
 export async function workerBalance(address: `0x${string}`): Promise<string> {
   const pub = createPublicClient({ chain: arbitrumSepolia, transport: http(rpcUrl) });
   const raw = (await pub.readContract({
@@ -125,6 +141,12 @@ export async function workerBalance(address: `0x${string}`): Promise<string> {
     args: [address],
   })) as bigint;
   return formatUnits(raw, 6);
+}
+
+/** What a worker can PAY FEES with — ETH, in ether, as a decimal string. */
+export async function workerGasBalance(address: `0x${string}`): Promise<string> {
+  const pub = createPublicClient({ chain: arbitrumSepolia, transport: http(rpcUrl) });
+  return formatEther(await pub.getBalance({ address }));
 }
 
 /**
@@ -142,8 +164,10 @@ export async function withdrawTo(
 ): Promise<{ txHash: `0x${string}`; amount: string }> {
   const from = worker.walletAddress as `0x${string}`;
   const balance = await workerBalance(from);
-  // Leave a little behind for gas, or the withdrawal itself cannot be signed.
-  const spendable = amountUsdc ?? (Number(balance) - Number(SIGNUP_GAS_USDC) / 2).toFixed(6);
+  /* All of it. The old version held back half a signup drip "for gas", which
+     made sense when gas and earnings were the same asset; here gas is ETH, so
+     that reserve was simply money kept from a freelancer for no reason. */
+  const spendable = amountUsdc ?? Number(balance).toFixed(6);
   if (Number(spendable) <= 0) throw new Error(`Nothing to withdraw — balance is $${balance}`);
 
   const { createSignerFor } = await import("../circle/circleSigner.js");

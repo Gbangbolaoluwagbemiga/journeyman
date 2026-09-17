@@ -91,7 +91,7 @@ export class AgentClient {
       `Brief generated: "${brief.title}" — ${brief.criteria.length} acceptance criteria, ${brief.milestones.length} milestone(s)`,
     );
 
-    this.emit("job_posted", "Posting job to Journeyman escrow on Arc...");
+    this.emit("job_posted", "Posting job to Journeyman escrow...");
     const { escrowId, txHash } = await journeyman.createEscrow({
       totalAmount: parseUnits(brief.budget.toString(), 6),
       durationDays: BigInt(brief.durationDays),

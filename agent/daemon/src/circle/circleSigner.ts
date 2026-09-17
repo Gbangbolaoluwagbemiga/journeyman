@@ -28,7 +28,7 @@ const { initiateDeveloperControlledWalletsClient } = nodeRequire(
  *   • sign x402 payment authorizations (EIP-712 `signTypedData`) — this is exactly
  *     the `BatchEvmSigner` shape the Gateway batching rail needs, so payments run
  *     under MPC, and
- *   • send arbitrary contract-write transactions on Arc — including Journeyman's
+ *   • send arbitrary contract-write transactions — including Journeyman's
  *     `createEscrow` / `acceptFreelancer` / `approveMilestone` — via `writeContract`,
  *     which works for any ABI (arrays, strings, structs) since it's just ABI-encoded
  *     calldata under the hood. This is what de-risks Phase 0 Spike A: a Circle

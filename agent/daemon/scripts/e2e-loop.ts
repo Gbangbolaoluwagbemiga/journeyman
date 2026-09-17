@@ -46,7 +46,7 @@ async function main() {
   // per-client balance, and a commission is signed for like a withdrawal, so
   // the harness has to be a real client or it is testing a door that is shut.
   const clientKey = (process.env.E2E_CLIENT_KEY?.trim() || process.env.FREELANCER_1_KEY?.trim()) as `0x${string}`;
-  if (!clientKey) throw new Error("Set E2E_CLIENT_KEY (or FREELANCER_1_KEY) to a funded Arc account.");
+  if (!clientKey) throw new Error("Set E2E_CLIENT_KEY (or FREELANCER_1_KEY) to an Arbitrum Sepolia account funded with ETH and USDC.");
   const clientAccount = privateKeyToAccount(clientKey);
   const clientWallet = createWalletClient({ account: clientAccount, chain: arbitrumSepolia, transport: http(rpcUrl) });
 

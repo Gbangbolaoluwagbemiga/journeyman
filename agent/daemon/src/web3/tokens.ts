@@ -17,7 +17,7 @@ export interface WhitelistedToken {
   address: `0x${string}`;
   symbol: string;
   decimals: number;
-  /** True for the chain's own currency. On Arc that is USDC itself. */
+  /** True for the chain's own currency. That is ETH here, which is gas and not payment. */
   native: boolean;
 }
 

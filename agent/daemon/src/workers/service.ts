@@ -21,7 +21,7 @@ import * as journeyman from "../web3/journeyman.js";
 import { createSignerFor, signMessageAsWallet } from "../circle/circleSigner.js";
 import { config } from "../config.js";
 import { categoryLabel, categoryOf } from "../categories.js";
-import { dripGas, provisionWorkerWallet, workerBalance, withdrawTo } from "./wallets.js";
+import { dripGas, provisionWorkerWallet, workerBalance, workerGasBalance, withdrawTo } from "./wallets.js";
 
 /**
  * An error whose message was written to be read by the person who caused it.
@@ -258,9 +258,9 @@ async function ensureGas(worker: store.WorkerRow): Promise<void> {
   if (worker.mode === "own" || !worker.walletAddress) return;
   const address = worker.walletAddress as `0x${string}`;
   try {
-    if (Number(await workerBalance(address)) >= MIN_GAS_USDC) return;
+    if (Number(await workerGasBalance(address)) >= MIN_GAS_ETH) return;
     await dripGas(address); // awaited here, unlike signup — they are mid-action
-    if (Number(await workerBalance(address)) >= MIN_GAS_USDC) return;
+    if (Number(await workerGasBalance(address)) >= MIN_GAS_ETH) return;
   } catch {
     // fall through to the message below rather than surfacing a chain error
   }
@@ -269,8 +269,14 @@ async function ensureGas(worker: store.WorkerRow): Promise<void> {
   );
 }
 
-/** Enough to sign with. Arc fees are tiny; this is a floor, not a target. */
-const MIN_GAS_USDC = Number(process.env.WORKER_MIN_GAS_USDC ?? 0.01);
+/**
+ * Enough ETH to sign with. A floor, not a target.
+ *
+ * This measured USDC until the port to Arbitrum, where USDC buys no gas at all
+ * — so a worker holding earnings and no ETH passed the check and then failed
+ * the transaction.
+ */
+const MIN_GAS_ETH = Number(process.env.WORKER_MIN_GAS_ETH ?? 0.0001);
 
 function signerFor(worker: store.WorkerRow) {
   if (worker.mode === "own") {
@@ -1309,8 +1315,8 @@ export async function deliveryTarget(escrowId: string): Promise<{
    *
    * This read the split out of the DisputeResolved event through a windowed
    * getLogs scan — and that scan looks back a fixed number of chunks named
-   * CHUNKS_PER_DAY, which is roughly 108,000 blocks and nothing like a day on
-   * Arc. About an hour after escrow 7 was settled the amounts simply stopped
+   * CHUNKS_PER_DAY — which was 108,000 blocks and, at the old chain's rate,
+   * nothing like a day. About an hour after escrow 7 was settled the amounts stopped
    * being found, so a freelancer's record of what had been decided about their
    * own payment quietly emptied out.
    *
@@ -1442,7 +1448,7 @@ export function jobDetail(escrowId: string): {
   };
 }
 
-/** What they've earned. On Arc this is both their spendable balance and their gas. */
+/** What they've earned. Their ability to pay fees is a separate number — gas is ETH. */
 export async function balance(workerId: string): Promise<{ balance: string; address: string }> {
   const worker = store.getWorker(workerId);
   if (!worker?.walletAddress) throw new UserFacingError("Unknown worker.");

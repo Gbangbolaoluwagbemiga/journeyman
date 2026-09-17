@@ -4,7 +4,7 @@ import { defineChain } from "viem";
 /**
  * ONE ENDPOINT, BECAUSE ARBITRUM'S DOES BOTH.
  *
- * Arc needed two. Its drpc endpoint answered plain reads all day and capped
+ * The previous chain needed two. Its drpc endpoint answered plain reads all day, capped
  * eth_getLogs somewhere under 200 blocks while claiming the limit was 10,000;
  * its public endpoint was the only one that would walk a real log range and it
  * rate-limited a bare eth_call. Reads and logs had to be split across the two,
@@ -63,14 +63,22 @@ export const config = {
 
   /**
    * Block the live proxy was deployed at. The token whitelist has to be
-   * reconstructed from logs, and public RPCs cap a getLogs range (10k blocks on
-   * Arc's free tier), so scanning from genesis is not an option -- and would be
-   * 60 million blocks of nothing in any case.
+   * reconstructed from logs, and public RPCs cap a getLogs range, so scanning
+   * from genesis is not an option -- and would be 300 million blocks of nothing
+   * in any case.
    */
   journeymanDeployBlock: BigInt(process.env.JOURNEYMAN_DEPLOY_BLOCK?.trim() || "309527684"),
   /** Largest block span this RPC will answer a getLogs call for. */
   logRangeLimit: BigInt(process.env.LOG_RANGE_LIMIT?.trim() || "100000"),
   graphUrl: process.env.GRAPH_URL?.trim() || "",
+
+  /**
+   * Block explorer, no trailing slash. Every "see it on chain" link the daemon
+   * sends — in Telegram, in the payment feed, on the wallet card — is built
+   * from this. It was hardcoded to the old chain's explorer in five places,
+   * which is five dead links to hand a judge.
+   */
+  explorerBaseUrl: (process.env.EXPLORER_BASE_URL?.trim() || "https://sepolia.arbiscan.io").replace(/\/$/, ""),
 
   /**
    * The Journeyman API, which owns the notification store.
@@ -151,5 +159,5 @@ export const config = {
   port: Number(process.env.PORT ?? 8787),
 };
 
-/** USDC on Arc Testnet has 6 decimals. */
+/** USDC on Arbitrum Sepolia has 6 decimals. */
 export const USDC_DECIMALS = 6;

@@ -1006,7 +1006,7 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, {
         address: config.circleWalletAddress,
         balance,
-        explorerUrl: `https://testnet.arcscan.app/address/${config.circleWalletAddress}`,
+        explorerUrl: journeyman.explorerAddressUrl(config.circleWalletAddress),
       });
     } catch (err) {
       return json(res, 500, { error: err instanceof Error ? err.message : String(err) });
@@ -1065,7 +1065,7 @@ const server = http.createServer(async (req, res) => {
 
       const pub = createPublicClient({ chain: arbitrumSepolia, transport: viemHttp(rpcUrl) });
       const tx = await pub.getTransaction({ hash: b.txHash as `0x${string}` }).catch(() => null);
-      if (!tx) return json(res, 404, { error: "That transaction could not be found on Arc yet. Give it a moment and try again." });
+      if (!tx) return json(res, 404, { error: "That transaction could not be found on chain yet. Give it a moment and try again." });
 
       const receipt = await pub.getTransactionReceipt({ hash: b.txHash as `0x${string}` }).catch(() => null);
       if (!receipt || receipt.status !== "success") return json(res, 400, { error: "That transaction has not succeeded." });
@@ -2656,10 +2656,11 @@ void (async () => {
   /**
    * ONE sweep, not one per commission.
    *
-   * Arc's RPC caps a log range at 9,000 blocks — about 75 minutes — so reaching
-   * back a week means ~85 sequential requests. Doing that per escrow would have
-   * meant thousands of calls on every boot to answer a question that one pass
-   * over the same blocks answers for all of them at once.
+   * A log range is capped, so reaching back a week means a sequence of windowed
+   * requests — 28 of them at Arbitrum Sepolia's block rate, and ~85 at the old
+   * chain's. Doing that per escrow would have meant thousands of calls on every
+   * boot to answer a question that one pass over the same blocks answers for
+   * all of them at once.
    */
   let sweep: Map<string, journeyman.DisputeAward[]>;
   backfillState = { status: "scanning" };

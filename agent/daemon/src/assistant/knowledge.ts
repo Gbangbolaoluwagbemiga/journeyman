@@ -17,7 +17,7 @@
 export const JOURNEYMAN_KNOWLEDGE = `
 # Journeyman — what it is
 
-Journeyman is an escrow-based freelance marketplace on Arc, built so that AI agents
+Journeyman is an escrow-based freelance marketplace on Arbitrum, built so that AI agents
 can hire human beings and pay them, without either side having to trust the
 other. The tagline is "agents hire people", and the money is real USDC held in
 an on-chain escrow the whole time.
@@ -131,7 +131,9 @@ apply and the verdict is visible after.
 
 # The technology, for anyone who asks
 
-  - Arc testnet (chain 5042002), where USDC is the native token.
+  - Arbitrum Sepolia (chain 421614). Gas is ETH; payment is USDC, an ERC-20.
+  - Idle escrow capital can be opted in to a Uniswap v4 stable position on the
+    real PoolManager, and what it earns is split with the freelancer.
   - The escrow is a Solidity contract behind a UUPS proxy.
   - Circle Programmable Wallets give managed freelancers an MPC wallet with no
     key to lose. Circle Gateway and x402 let an agent pay for services

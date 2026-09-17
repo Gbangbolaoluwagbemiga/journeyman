@@ -79,7 +79,7 @@ async function main() {
     "\n⚠  Do NOT set these on Railway. The hosted daemon must keep the original\n" +
       "   wallet, or both will be the same agent again and race on every job.\n",
   );
-  console.log("Next: send that address a little testnet USDC on Arc for gas and hiring,");
+  console.log("Next: send that address Arbitrum Sepolia ETH for gas and testnet USDC for hiring,");
   console.log("then start the local daemon. It will act as its own agent from then on.\n");
 }
 

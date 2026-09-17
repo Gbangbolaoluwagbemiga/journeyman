@@ -9,9 +9,17 @@
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createGatewayMiddleware, type PaymentRequest, type PaymentResponse } from "@circle-fin/x402-batching/server";
-import { config } from "../config.js";
+import { config, arbitrumSepolia } from "../config.js";
 
-const ARC_TESTNET_NETWORK = `eip155:${5042002}`;
+/*
+ * The chain the paywall settles on, as a CAIP-2 id.
+ *
+ * Derived from the configured chain rather than written out, because these are
+ * two halves of one fact. It still read eip155:5042002 after the port — the
+ * escrow was on Arbitrum while the 402 told every paying agent to send USDC
+ * to Arc.
+ */
+const SETTLEMENT_NETWORK = `eip155:${arbitrumSepolia.id}`;
 
 /**
  * Applies Circle's x402 paywall to a raw Node request/response pair. Returns
@@ -21,7 +29,7 @@ const ARC_TESTNET_NETWORK = `eip155:${5042002}`;
 export function createJourneymanPaywall(sellerAddress: `0x${string}`, priceUsdc: string) {
   const paywall = createGatewayMiddleware({
     sellerAddress,
-    networks: ARC_TESTNET_NETWORK,
+    networks: SETTLEMENT_NETWORK,
     facilitatorUrl: config.gatewayFacilitatorUrl,
   }).require(`$${priceUsdc}`);
 
