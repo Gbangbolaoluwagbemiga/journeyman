@@ -234,7 +234,10 @@ export interface WhitelistedToken {
   address: `0x${string}`;
   symbol: string;
   decimals: number;
+  /** The chain's own currency — ETH here, which is gas and not what anyone is paid in. */
   native: boolean;
+  /** What jobs are priced in. The one a client should be offered first. */
+  preferred?: boolean;
 }
 
 /**

@@ -17,8 +17,22 @@ export interface WhitelistedToken {
   address: `0x${string}`;
   symbol: string;
   decimals: number;
-  /** True for the chain's own currency. That is ETH here, which is gas and not payment. */
+  /**
+   * True for the chain's OWN currency — address(0), which is ETH here.
+   *
+   * This used to be set for USDC, because on the chain this was built for USDC
+   * WAS the native currency. After the port it was a plain falsehood, and the
+   * compose page printed it: USDC, listed with "this chain's own currency"
+   * beside it, on a chain where it is an ordinary ERC-20 and the native
+   * currency is gas nobody is paid in.
+   */
   native: boolean;
+  /**
+   * True for the token the platform settles in — what jobs are priced in, and
+   * what a client should be offered first. A separate question from `native`,
+   * and the one every caller was actually asking.
+   */
+  preferred: boolean;
 }
 
 /**
@@ -87,11 +101,12 @@ export async function listWhitelistedTokens(): Promise<WhitelistedToken[]> {
     live.map(async (address) => ({
       address,
       ...(await readTokenMeta(address)),
-      native: address.toLowerCase() === config.usdcAddress.toLowerCase(),
+      native: /^0x0{40}$/i.test(address),
+      preferred: address.toLowerCase() === config.usdcAddress.toLowerCase(),
     })),
   );
 
-  tokens.sort((a, b) => (a.native === b.native ? a.symbol.localeCompare(b.symbol) : a.native ? -1 : 1));
+  tokens.sort((a, b) => (a.preferred === b.preferred ? a.symbol.localeCompare(b.symbol) : a.preferred ? -1 : 1));
   cache = { at: Date.now(), tokens };
   return tokens;
 }

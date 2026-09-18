@@ -104,9 +104,10 @@ export default function AutopilotComposePage() {
     fetchWhitelistedTokens(ac.signal)
       .then((list) => {
         setTokens(list);
-        // Default to the chain's own currency when it is one of them; on this chain
-        // that is USDC, which is what a client means by "dollars" anyway.
-        setPayToken((prev) => prev || (list.find((t) => t.native) ?? list[0])?.address || "");
+        // Default to the token jobs are PRICED in, not the chain's own currency.
+        // Those were the same thing before the port and are not now: the native
+        // currency here is ETH, which is gas and not what anybody is paid in.
+        setPayToken((prev) => prev || (list.find((t) => t.preferred) ?? list[0])?.address || "");
       })
       .catch(() => setTokens([]));
     return () => ac.abort();
@@ -475,7 +476,7 @@ export default function AutopilotComposePage() {
                     {tokens.map((t) => (
                       <option key={t.address} value={t.address}>
                         {t.symbol}
-                        {t.native ? " — this chain's own currency" : ""}
+                        {t.preferred ? " — what jobs are priced in" : t.native ? " — the chain's own currency, which is gas" : ""}
                       </option>
                     ))}
                   </select>
