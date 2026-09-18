@@ -114,6 +114,7 @@ const ACTION_LABEL: Readonly<Record<string, string>> = {
   escalated_to_human: "Escalated to a human arbiter",
   payment_released: "Payment released",
   task_completed: "Job completed",
+  yield_settled: "Idle capital paid out",
   error: "Something went wrong",
 };
 
@@ -275,7 +276,17 @@ export async function fetchManagedEscrowIds(
 
 export interface AutopilotWallet {
   address: `0x${string}`;
+  /** USDC — what the treasury can afford to hire with. */
   balance: string;
+  /**
+   * ETH — what it can sign with.
+   *
+   * A separate number because they are separate assets here, and a treasury
+   * holding only USDC reads as funded everywhere and cannot send a single
+   * transaction. The daemon reported one balance, from getBalance, on a chain
+   * where the native currency was USDC; it is ETH now.
+   */
+  gasBalance: string;
   explorerUrl: string;
 }
 
@@ -301,6 +312,7 @@ export async function fetchAutopilotAddress(
   return {
     address: w.address as `0x${string}`,
     balance: w.balance ?? "0",
+    gasBalance: w.gasBalance ?? "0",
     explorerUrl: w.explorerUrl ?? "",
   };
 }

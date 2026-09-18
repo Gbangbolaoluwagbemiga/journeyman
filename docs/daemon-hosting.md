@@ -63,8 +63,19 @@ which it cannot act at all.
 | `WORKER_WALLET_SET_ID` | Minting a wallet per freelancer |
 | `WORKER_SIGNUP_GAS_ETH` · `WORKER_MIN_GAS_ETH` | Gas dripped to a new managed worker, in **ETH**. Gas and earnings are different assets here — a worker funded in USDC holds money they cannot move |
 | `MAX_JOB_BUDGET_USDC` · `DAILY_SPEND_CAP_USDC` | Spend limits. Set them |
+| `TREASURY_RESERVE_USDC` | USDC held back from withdrawals. Was `TREASURY_GAS_FLOOR_USDC`, which is not read — gas is ETH here, so holding back dollars protected nothing |
 
 Do **not** set `PORT`. Railway injects it, and the daemon reads it.
+
+### Fund the treasury in BOTH assets
+
+Job budgets are USDC; every signature costs ETH. A treasury holding only USDC
+reads as funded on every surface and cannot send a single transaction —
+including the drip that lets a new managed worker sign their first application.
+
+The daemon now says so, at boot and once a minute, and `/healthz` carries a
+`treasury` block with both numbers. Below 0.002 ETH it warns; above it, it goes
+quiet again rather than repeating itself.
 
 ### Two things that will bite
 

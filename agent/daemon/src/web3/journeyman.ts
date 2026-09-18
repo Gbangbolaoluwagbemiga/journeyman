@@ -147,6 +147,118 @@ export async function setYieldOptIn(
   return hash;
 }
 
+/** The controller attached to the escrow, or null when yield is switched off. */
+export async function yieldControllerAddress(): Promise<`0x${string}` | null> {
+  const controller = (await getPublicClient().readContract({
+    address: config.journeymanAddress,
+    abi,
+    functionName: "yieldController",
+  })) as `0x${string}`;
+  return /^0x0{40}$/i.test(controller) ? null : controller;
+}
+
+const CONTROLLER_ABI = [
+  { type: "function", name: "yieldOptIn", stateMutability: "view", inputs: [{ type: "uint256" }], outputs: [{ type: "bool" }] },
+  { type: "function", name: "yieldSettled", stateMutability: "view", inputs: [{ type: "uint256" }], outputs: [{ type: "bool" }] },
+  { type: "function", name: "escrowYield", stateMutability: "view", inputs: [{ type: "uint256" }], outputs: [{ type: "uint256" }] },
+  { type: "function", name: "distributeYield", stateMutability: "nonpayable", inputs: [{ type: "uint256" }], outputs: [] },
+] as const;
+
+export type YieldSettlement = {
+  escrowId: bigint;
+  /** Base units of the asset, already banked and waiting to be split. */
+  earned: bigint;
+};
+
+/** Pending and InProgress can still move; Disputed is somebody else's decision. */
+const LIVE_STATUSES = new Set([0, 1, 4]);
+
+/**
+ * Finished jobs whose earnings nobody has split yet.
+ *
+ * `distributeYield` is where the freelancer's 60% share actually moves, and the
+ * contract makes it permissionless precisely so that the people owed money do
+ * not depend on the platform remembering. Nothing was calling it — it appeared
+ * in the test suite and nowhere else — so every opted-in job that finished left
+ * its earnings sitting in the controller, indefinitely, with the freelancer's
+ * share in it.
+ *
+ * Reads only, and every filter here matches a `revert` in distributeYield:
+ * unknown escrow, already settled, job not finished. Getting one wrong costs a
+ * failed transaction a minute, forever.
+ */
+export async function pendingYieldSettlements(): Promise<YieldSettlement[]> {
+  const controller = await yieldControllerAddress();
+  if (!controller) return [];
+
+  const client = getPublicClient();
+  const next = (await client.readContract({
+    address: config.journeymanAddress,
+    abi,
+    functionName: "nextEscrowId",
+  })) as bigint;
+  if (next <= 1n) return [];
+
+  const ids = Array.from({ length: Number(next) - 1 }, (_, i) => BigInt(i + 1));
+
+  const states = await client.multicall({
+    contracts: ids.flatMap((escrowId) => [
+      { address: config.journeymanAddress, abi, functionName: "getEscrow" as const, args: [escrowId] as const },
+      { address: controller, abi: CONTROLLER_ABI, functionName: "yieldOptIn" as const, args: [escrowId] as const },
+      { address: controller, abi: CONTROLLER_ABI, functionName: "yieldSettled" as const, args: [escrowId] as const },
+      { address: controller, abi: CONTROLLER_ABI, functionName: "escrowYield" as const, args: [escrowId] as const },
+    ]),
+    allowFailure: true,
+  });
+
+  const out: YieldSettlement[] = [];
+  ids.forEach((escrowId, i) => {
+    const esc = states[i * 4];
+    const optedIn = states[i * 4 + 1];
+    const settled = states[i * 4 + 2];
+    const earned = states[i * 4 + 3];
+    /* A read that did not answer is not a "no". Skipping is the safe side: the
+       sweep runs again in a minute, and the contract refuses a second
+       settlement itself, so nothing is paid twice by trying again. */
+    if (esc?.status !== "success" || optedIn?.status !== "success") return;
+    if (settled?.status !== "success" || earned?.status !== "success") return;
+
+    if (!optedIn.result || settled.result) return;
+    if (LIVE_STATUSES.has(Number((esc.result as { status: number }).status))) return;
+    /* Nothing to split. Settling anyway would burn a transaction to write a
+       zero, and leaving it unsettled costs only the three reads above. */
+    if ((earned.result as bigint) === 0n) return;
+
+    out.push({ escrowId, earned: earned.result as bigint });
+  });
+  return out;
+}
+
+/**
+ * Split what one finished job earned: the client's fee first, then the
+ * freelancer's share, then the platform.
+ *
+ * Permissionless, so the daemon may settle a job it had nothing to do with —
+ * which is the point. A person who did the work should not have to know this
+ * function exists.
+ */
+export async function distributeYield(escrowId: bigint, signerOverride?: CircleSigner): Promise<`0x${string}`> {
+  const controller = await yieldControllerAddress();
+  if (!controller) throw new Error("No yield controller is attached.");
+
+  const signer = signerOverride ?? createCircleSigner();
+  const hash = await signer.walletClient.writeContract({
+    chain: arbitrumSepolia,
+    account: signer.address,
+    address: controller,
+    abi: CONTROLLER_ABI,
+    functionName: "distributeYield",
+    args: [escrowId],
+  });
+  await getPublicClient().waitForTransactionReceipt({ hash });
+  return hash;
+}
+
 /**
  * Hand a job to a manager, signed by whoever owns it.
  *

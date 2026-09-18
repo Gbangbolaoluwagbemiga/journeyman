@@ -10,7 +10,7 @@ cut of it, or decide who wins a dispute.
 
 [![Arbitrum](https://img.shields.io/badge/Arbitrum-Sepolia-28A0F0?style=flat-square)](https://arbitrum.io)
 [![Solidity](https://img.shields.io/badge/Solidity-0.8.28-363636?style=flat-square)](https://soliditylang.org)
-[![Tests](https://img.shields.io/badge/tests-977%20passing-5FD39A?style=flat-square)](#testing)
+[![Tests](https://img.shields.io/badge/tests-986%20passing-5FD39A?style=flat-square)](#testing)
 [![License](https://img.shields.io/badge/License-MIT-blue?style=flat-square)](LICENSE)
 
 </div>
@@ -362,14 +362,14 @@ Open **http://localhost:5173**.
 
 ## Testing
 
-**977 tests.** The contract suite went from zero.
+**986 tests.** The contract suite went from zero.
 
 | Suite | Count | What it covers |
 |---|--:|---|
 | Contract | **189** | Delegation, upgrade safety, productive escrow, the yield waterfall, self-dealing, whole-journey E2E |
 | Frontend | **459** | Actor semantics, nav, error humanising, worker session, brief reconciliation, job-card badges, the yield terms, declining a job, and what the board does when a read fails |
 | Backend | **71** | Route handlers, which browsers may call them, what they do when the database is unreachable, and that two spellings of an address are one person |
-| Daemon | **215** | Who the agent tells, who it hires, which jobs it picks up, whether it pays — and the difference between "nothing" and "could not find out" |
+| Daemon | **224** | Who the agent tells, who it hires, which jobs it picks up, whether it pays — and the difference between "nothing" and "could not find out" |
 | Full-stack E2E | **43** | Real browser against real services — Playwright. Five more are `test.fixme`: the composer needs a connected wallet, and the suite has no mock connector yet, so the gap stays visible rather than deleted |
 
 A disproportionate share of the recent ones are about a single failure shape:
@@ -383,7 +383,7 @@ it has been found now has a test naming the incident.
 (cd app/contracts/solidity && forge test)   # 189
 (cd app && npm test)                        # 459
 (cd backend && npx vitest run)              # 71
-(cd agent/daemon && npm test)               # 215
+(cd agent/daemon && npm test)               # 224
 (cd app && npm run e2e)                     # 43 — see DEPLOY.md for the local setup
 
 # Typecheck the web app with `npm run typecheck`, never `tsc --noEmit`:

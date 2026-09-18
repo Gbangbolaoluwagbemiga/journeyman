@@ -39,6 +39,8 @@ export type AgentEventType =
   | "revision_requested"
   | "escalated_to_human"
   | "payment_released"
+  /** The waterfall ran: what an escrow earned while it waited has been split. */
+  | "yield_settled"
   | "task_completed"
   | "error";
 

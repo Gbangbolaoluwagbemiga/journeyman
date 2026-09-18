@@ -12,7 +12,7 @@
 
 import http from "node:http";
 import { randomUUID } from "node:crypto";
-import { createPublicClient, http as viemHttp, formatEther, verifyMessage } from "viem";
+import { createPublicClient, http as viemHttp, formatEther, formatUnits, erc20Abi, verifyMessage } from "viem";
 import { config, arbitrumSepolia, rpcUrl } from "./config.js";
 import { AgentClient, type AgentEvent } from "./agent/AgentClient.js";
 import { notifyWeb } from "./notify/web.js";
@@ -37,12 +37,22 @@ import { verifyGoogleIdToken } from "./workers/google-auth.js";
 const PORT = config.port;
 
 /**
- * Held back from every withdrawal so Journeyman can still sign.
+ * USDC held back from every withdrawal.
  *
- * A treasury drained to exactly zero cannot pay the gas to do anything at all —
- * including paying the next freelancer whose work was already approved.
+ * It was called a gas floor, and on the chain this was built for that is what
+ * it was: the native currency WAS USDC, so keeping a little back kept the
+ * treasury able to sign. Gas is ETH here, and holding back dollars buys no
+ * signatures at all — see TREASURY_GAS_FLOOR_ETH below for the check that
+ * actually does that job.
+ *
+ * A reserve is still worth keeping, for a smaller and more honest reason:
+ * rounding, and commitments in flight that the ledger has not caught up with.
+ *
+ * The old TREASURY_GAS_FLOOR_USDC variable is deliberately not read — a stale
+ * one set to protect gas would now be protecting nothing under a name that says
+ * otherwise.
  */
-const TREASURY_GAS_FLOOR = Number(process.env.TREASURY_GAS_FLOOR_USDC ?? 0.5);
+const TREASURY_USDC_RESERVE = Number(process.env.TREASURY_RESERVE_USDC ?? 0.5);
 
 /**
  * The exact sentence a depositor signs to authorise a withdrawal.
@@ -454,6 +464,80 @@ const BOOTED_AT = Date.now();
  * never happened" were indistinguishable.
  */
 let backfillState: { status: string; found?: number; wrote?: string[]; error?: string } = { status: "pending" };
+
+/**
+ * What the treasury holds, in the two assets it needs.
+ *
+ * MONEY AND GAS ARE DIFFERENT HERE, AND THAT IS NEW.
+ *
+ * On the chain this was built for the native currency WAS USDC, so one balance
+ * answered both "can it hire" and "can it sign". Arbitrum splits them: job
+ * budgets are USDC, an ERC-20, and every transaction costs ETH. A treasury
+ * holding only USDC reads as funded on every dashboard and cannot send a single
+ * transaction — including the drip that lets a new managed worker sign their
+ * first application.
+ */
+async function treasuryBalances(): Promise<{ usdc: string; gas: string }> {
+  const address = config.circleWalletAddress as `0x${string}`;
+  const publicClient = createPublicClient({ chain: arbitrumSepolia, transport: viemHttp(rpcUrl) });
+  const [gas, usdc] = await Promise.all([
+    publicClient.getBalance({ address }),
+    publicClient.readContract({
+      address: config.usdcAddress,
+      abi: erc20Abi,
+      functionName: "balanceOf",
+      args: [address],
+    }) as Promise<bigint>,
+  ]);
+  return { usdc: formatUnits(usdc, 6), gas: formatEther(gas) };
+}
+
+/**
+ * Enough ETH to keep signing. A floor, not a target.
+ *
+ * The default is roughly a hundred transactions at the gas price this chain has
+ * been running at — enough warning to act on, low enough not to cry wolf. Raise
+ * it on a busy daemon: the cost of warning early is a log line.
+ */
+const TREASURY_GAS_FLOOR_ETH = Number(process.env.TREASURY_GAS_FLOOR_ETH ?? 0.002);
+
+/** Last treasury reading, so /healthz can answer without a chain call. */
+let treasuryState: { usdc: string | null; gas: string | null; gasLow: boolean; checkedAt: number } = {
+  usdc: null,
+  gas: null,
+  gasLow: false,
+  checkedAt: 0,
+};
+
+/**
+ * Say it out loud when the treasury cannot pay for its own transactions.
+ *
+ * The failure is silent otherwise: hiring stops, worker drips stop, and every
+ * surface still shows a healthy USDC balance. This is the same bug that was
+ * fixed one level down in the worker layer, where a freelancer was handed USDC
+ * for gas and could not move any of it.
+ */
+async function checkTreasury(): Promise<void> {
+  if (!config.circleWalletAddress) return;
+  try {
+    const { usdc, gas } = await treasuryBalances();
+    const gasLow = Number(gas) < TREASURY_GAS_FLOOR_ETH;
+    const wasLow = treasuryState.gasLow;
+    treasuryState = { usdc, gas, gasLow, checkedAt: Date.now() };
+    if (gasLow && !wasLow) {
+      console.warn(
+        `  ⚠  Treasury is out of gas: ${gas} ETH (floor ${TREASURY_GAS_FLOOR_ETH}).\n` +
+          `     It holds ${usdc} USDC and can spend none of it — every signature costs ETH here,\n` +
+          `     including the drip that lets a new managed worker send their first transaction.\n` +
+          `     Top up ${config.circleWalletAddress} with Arbitrum Sepolia ETH.\n`,
+      );
+    } else if (!gasLow && wasLow) {
+      console.log(`  ✓  Treasury gas restored: ${gas} ETH\n`);
+    }
+  } catch (err) {
+    console.warn("[treasury] balance check failed:", err instanceof Error ? err.message : err);
+  }
+}
 
 function json(res: http.ServerResponse, status: number, data: unknown) {
   res.writeHead(status, { "Content-Type": "application/json" });
@@ -972,6 +1056,12 @@ const server = http.createServer(async (req, res) => {
       fallbackModel: config.groqFallbackModel,
       hireScoreThreshold: config.hireScoreThreshold,
       disputeBackfill: backfillState,
+      /*
+       * Both assets, because "funded" is two questions on this chain. A
+       * treasury with USDC and no ETH looks healthy in every other field here
+       * and cannot send a single transaction.
+       */
+      treasury: treasuryState,
     });
   }
 
@@ -994,18 +1084,27 @@ const server = http.createServer(async (req, res) => {
        * something that can.
        */
       let balance: string | null = null;
+      let gasBalance: string | null = null;
       try {
-        const publicClient = createPublicClient({ chain: arbitrumSepolia, transport: viemHttp(rpcUrl) });
-        balance = formatEther(
-          await publicClient.getBalance({ address: config.circleWalletAddress as `0x${string}` }),
-        );
+        const t = await treasuryBalances();
+        balance = t.usdc;
+        gasBalance = t.gas;
       } catch (err) {
         console.warn("[wallet] balance read failed:", err instanceof Error ? err.message : err);
       }
 
       return json(res, 200, {
         address: config.circleWalletAddress,
+        /*
+         * `balance` is USDC — what the treasury can afford to HIRE with, which
+         * is the question the command center is asking. It used to be
+         * getBalance, the native currency, on a chain where that was USDC. It
+         * is ETH here, so the number under "what Journeyman can afford before
+         * posting a job" was a gas balance wearing a dollar sign.
+         */
         balance,
+        /** ETH — what it can SIGN with. A different question, and a different asset. */
+        gasBalance,
         explorerUrl: journeyman.explorerAddressUrl(config.circleWalletAddress),
       });
     } catch (err) {
@@ -1031,9 +1130,7 @@ const server = http.createServer(async (req, res) => {
     try {
       const account = store.treasuryAccount(address);
       const onHand = await treasuryBalance();
-      // Keep a little back so Journeyman can still sign; a treasury that cannot pay
-      // gas cannot pay anyone.
-      const spendable = Math.max(0, onHand - TREASURY_GAS_FLOOR);
+      const spendable = Math.max(0, onHand - TREASURY_USDC_RESERVE);
       return json(res, 200, {
         address,
         deposited: account.deposited.toFixed(6),
@@ -1123,7 +1220,7 @@ const server = http.createServer(async (req, res) => {
 
       const account = store.treasuryAccount(b.address);
       const onHand = await treasuryBalance();
-      const spendable = Math.max(0, onHand - TREASURY_GAS_FLOOR);
+      const spendable = Math.max(0, onHand - TREASURY_USDC_RESERVE);
       const cap = Math.min(account.net, spendable);
       if (amount > cap + 1e-9) {
         return json(res, 400, {
@@ -1837,6 +1934,10 @@ server.listen(PORT, () => {
   } else {
     console.log(`     notifications → ${config.apiUrl}\n`);
   }
+
+  /* At boot, not only on the minute sweep — an operator reading the startup log
+     is the person who can act on it, and they are reading it now. */
+  void checkTreasury();
 });
 
 // ── Background poller: applications → hire, submissions → review ──────────
@@ -1939,11 +2040,26 @@ async function rateFreelancer(escrowId: string, brief: { milestones?: unknown[] 
   }
 }
 
-/** Treasury balance as a number, for measuring what a cancellation actually returned. */
+/**
+ * What the treasury holds in USDC, as a number.
+ *
+ * THIS READ THE NATIVE BALANCE, AND EVERY CALLER CALLED IT DOLLARS.
+ *
+ * Correct where the native currency was USDC; on Arbitrum it returned ETH. Two
+ * things were computed from it and both were wrong in a way nothing would
+ * report: what a depositor is told they can withdraw — which, against a reserve
+ * of 0.5 and a balance of 0.13 ETH, came out as zero for everybody — and the
+ * measurement of how much a cancellation actually refunded.
+ */
 async function treasuryBalance(): Promise<number> {
   const pub = createPublicClient({ chain: arbitrumSepolia, transport: viemHttp(rpcUrl) });
-  const wei = await pub.getBalance({ address: config.circleWalletAddress as `0x${string}` });
-  return Number(formatEther(wei));
+  const raw = (await pub.readContract({
+    address: config.usdcAddress,
+    abi: erc20Abi,
+    functionName: "balanceOf",
+    args: [config.circleWalletAddress as `0x${string}`],
+  })) as bigint;
+  return Number(formatUnits(raw, 6));
 }
 
 /** True while every task in a pass is failing — i.e. the subgraph is unreachable. */
@@ -2144,6 +2260,52 @@ const EMERGENCY_GRACE_DAYS = 30;
  */
 const reclaimAttemptedAt = new Map<string, number>();
 const RECLAIM_RETRY_MS = 60 * 60 * 1000;
+
+/**
+ * Pay out what finished jobs earned while they sat in escrow.
+ *
+ * THE FEATURE HAD NO CALLER.
+ *
+ * `distributeYield` is the waterfall — the client's fee first, then the
+ * freelancer's 60% share, then the platform — and it is permissionless in the
+ * contract precisely so that the people owed money do not depend on us
+ * remembering. Nothing remembered. The function appeared in the contract test
+ * suite and in no running code at all, so every opted-in job that completed
+ * left its earnings in the controller with the freelancer's share inside them.
+ *
+ * Settling a job we had nothing to do with is correct and deliberate: a person
+ * who did the work should not have to learn that this function exists, or hold
+ * gas to call it.
+ *
+ * Failures are logged and dropped. The sweep runs again in a minute and the
+ * contract refuses a second settlement itself, so a retry cannot double-pay.
+ */
+async function settleFinishedYield(): Promise<void> {
+  let pending: Awaited<ReturnType<typeof journeyman.pendingYieldSettlements>>;
+  try {
+    pending = await journeyman.pendingYieldSettlements();
+  } catch (err) {
+    console.warn("[yield] could not read settlements:", err instanceof Error ? err.message : err);
+    return;
+  }
+
+  for (const { escrowId, earned } of pending) {
+    try {
+      const txHash = await journeyman.distributeYield(escrowId);
+      const usdc = Number(earned) / 1e6;
+      console.log(`[yield] settled escrow ${escrowId}: ${usdc} USDC split (${txHash})`);
+      broadcast({
+        type: "yield_settled",
+        message: `Escrow ${escrowId} earned ${usdc} USDC while it waited — the fee, the freelancer's share and the platform's have been paid out.`,
+        escrowId: String(escrowId),
+        txHash,
+        timestamp: Date.now(),
+      });
+    } catch (err) {
+      console.warn(`[yield] escrow ${escrowId} would not settle:`, err instanceof Error ? err.message : err);
+    }
+  }
+}
 
 async function sweepStrandedEscrows(): Promise<void> {
   for (const task of store.listTasks(200)) {
@@ -2402,6 +2564,8 @@ async function pollOnce() {
     await sweepExpiredCommissions();
     await sweepStrandedEscrows();
     await sweepOverdueCommissions();
+    await settleFinishedYield();
+    await checkTreasury();
     await reconcileTaskStatuses();
   }
   /*
